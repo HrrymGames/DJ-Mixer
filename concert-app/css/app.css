@@ -509,3 +509,18 @@ input[type="date"].text-input { display: block; text-align: left; }
   *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
 :root[data-theme="dark"] .toast { background: rgba(242, 242, 247, 0.96); color: #111; }
+
+/* ---- map v2: built-in countries + tile fallbacks ---- */
+#map { background: #cfe0ea; }
+:root[data-theme="dark"] #map { background: #0b1118; }
+.tiles-dark { filter: invert(1) hue-rotate(180deg) brightness(0.88) contrast(0.92) saturate(0.6); }
+button.map-stats { color: var(--text); font-family: inherit; cursor: default; }
+button.map-stats.has-missing { cursor: pointer; }
+
+/* ---- settings: connection check ---- */
+.check-list { list-style: none; margin: 0; padding: 0; }
+.check-list li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 0.5px solid var(--hair); font-size: 15px; }
+.check-list li:last-child { border-bottom: 0; }
+.check-list .ok { color: #1f9d55; font-weight: 700; white-space: nowrap; }
+.check-list .bad { color: var(--danger); font-weight: 700; white-space: nowrap; }
+:root[data-theme="dark"] .check-list .ok { color: #34c759; }

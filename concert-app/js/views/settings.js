@@ -1,4 +1,5 @@
 import { h, confirmDialog, toast, pickFiles, actionSheet } from '../ui.js';
+import { checkServices } from '../lookup.js';
 import { state, setSetting, concerts, wishes, isPast, exportBackup, importBackup, deleteEverything } from '../store.js';
 
 let root;
@@ -101,6 +102,23 @@ async function storageLine(el) {
   el.textContent = `${(usage / 1024 / 1024).toFixed(usage > 100 * 1024 * 1024 ? 0 : 1)} MB used on this phone${persisted ? ' · protected from auto-clear' : ''}`;
 }
 
+// Kept between renders so the results stay visible.
+const checkList = h('ul.check-list', { hidden: true });
+
+async function runCheck(e) {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
+  checkList.hidden = false;
+  checkList.replaceChildren(h('li', h('span', 'Testing each online service…')));
+  const results = await checkServices();
+  checkList.replaceChildren(...results.map((r) => h('li',
+    h('span', r.name),
+    r.ok ? h('span.ok', '✓ Working') : h('span.bad', '✗ Not reachable'))));
+  btn.disabled = false;
+  btn.textContent = 'Check again';
+}
+
 function render() {
   const storage = h('small');
   storageLine(storage);
@@ -116,9 +134,12 @@ function render() {
         row('Order of past tickets', segmented('pastOrder', [['newest', 'Newest first'], ['oldest', 'Oldest first']])),
         toggle('showCountdown', 'Countdown on upcoming tickets', '"In 12 days" badge on the ticket')),
       group('Map',
+        row('Map style', segmented('mapStyle', [['detailed', 'Detailed'], ['simple', 'Simple']]), 'Simple shows just countries and works with no signal'),
         toggle('mapUpcoming', 'Show upcoming shows on the map', 'They appear with a dashed border')),
       group('Internet lookups',
-        toggle('autoLookup', 'Auto-fill details', 'Finds artist photos, tour names, venue locations and capacities online')),
+        toggle('autoLookup', 'Auto-fill details', 'Finds artist photos, tour names, venue locations and capacities online'),
+        checkList,
+        h('button.set-button', { type: 'button', onclick: runCheck }, 'Check connection')),
       group('Your data',
         h('p.set-note', 'Everything is saved on this phone only. Back up now and then so you don\'t lose your tickets if you change phones.'),
         h('button.set-button', { type: 'button', onclick: backup }, 'Back up…'),
@@ -135,7 +156,7 @@ function render() {
         }, 'Delete all data')),
       group('About',
         h('div.set-row', h('span.set-text', h('span', 'Stubs'), h('small', 'Version 1.0'))),
-        h('p.set-note', 'Artist photos from Deezer and Wikipedia. Maps, venues and capacities from OpenStreetMap, CARTO and Wikidata. Tours from Wikidata and Wikipedia.')),
+        h('p.set-note', 'Artist photos from Deezer and Wikipedia. Venues and capacities from OpenStreetMap and Wikidata. Tours from Wikidata and Wikipedia. Map from Natural Earth (built in), with OpenStreetMap, Esri or CARTO street tiles.')),
     ),
   );
   root.scrollTop = scroll;

@@ -1,6 +1,6 @@
 // Offline support: keeps the app itself cached so it opens without signal (e.g. inside a venue).
 // Bump VERSION whenever app files change so phones pick up the new version.
-const VERSION = 'stubs-v1';
+const VERSION = 'stubs-v2';
 const APP_FILES = [
   './',
   'index.html',
@@ -8,6 +8,9 @@ const APP_FILES = [
   'css/app.css',
   'vendor/leaflet/leaflet.css',
   'vendor/leaflet/leaflet.js',
+  'vendor/world/topojson-client.min.js',
+  'vendor/world/countries-50m.json',
+  'js/world.js',
   'js/main.js', 'js/nav.js', 'js/db.js', 'js/store.js', 'js/ui.js', 'js/lookup.js', 'js/ticket.js', 'js/sortable.js',
   'js/views/map.js', 'js/views/tickets.js', 'js/views/wishlist.js', 'js/views/settings.js', 'js/views/detail.js',
   'js/views/concertForm.js', 'js/views/videoTagger.js', 'js/views/videoViewer.js', 'js/views/photoViewer.js',

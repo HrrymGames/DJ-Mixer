@@ -1,6 +1,6 @@
 import { h, overlay, debounce, icon, toast, pickFiles, placeLine, formatNumber, confirmDialog } from '../ui.js';
 import { newConcert, saveItem, addMedia, deleteMedia, deleteItem, isPast, state } from '../store.js';
-import { searchArtists, findArtistImage, searchVenues, findVenueCapacity, findTour } from '../lookup.js';
+import { searchArtists, findArtistImage, searchVenues, findVenueCapacity, findTour, resolveVenue } from '../lookup.js';
 import { ticketEl } from '../ticket.js';
 
 /**
@@ -86,6 +86,7 @@ export function openConcertForm({ mode = 'past', concert, prefill, onSaved } = {
   });
   const venueList = h('ul.suggestions', { hidden: true });
   const venuePicked = h('div.venue-picked');
+  const venueStatus = h('p.hint');
   const cityInput = h('input.text-input', { type: 'text', value: draft.venue.city, placeholder: 'City', autocapitalize: 'words' });
   const countryInput = h('input.text-input', { type: 'text', value: draft.venue.country, placeholder: 'Country', autocapitalize: 'words' });
   const manualVenue = h('div.manual-venue', { hidden: !(draft.venue.name && draft.venue.lat == null) }, cityInput, countryInput,
@@ -102,11 +103,17 @@ export function openConcertForm({ mode = 'past', concert, prefill, onSaved } = {
   let venueToken = 0;
   const suggestVenues = debounce(async (q) => {
     const token = ++venueToken;
-    const res = auto ? await searchVenues(q) : [];
-    if (token !== venueToken || document.activeElement !== venueInput) return;
-    showSuggestions(venueList, res.map((v) => ({
+    if (!auto) return;
+    venueStatus.textContent = 'Searching…';
+    const { results, failed } = await searchVenues(q);
+    if (token !== venueToken) return;
+    venueStatus.textContent = results.length ? ''
+      : failed ? 'Couldn\'t reach the venue search – check your internet. You can still type the venue and city.'
+        : 'No matches yet – keep typing, or type the city and country below.';
+    if (document.activeElement !== venueInput) return;
+    showSuggestions(venueList, results.map((v) => ({
       main: v.name,
-      sub: placeLine(v),
+      sub: [placeLine(v), v.capacity && `${formatNumber(v.capacity)} capacity`].filter(Boolean).join(' · '),
       iconName: 'pin',
       pick: () => setVenue(v),
     })));
@@ -116,14 +123,16 @@ export function openConcertForm({ mode = 'past', concert, prefill, onSaved } = {
     draft.venue = { ...draft.venue, name: venueInput.value, lat: null, lon: null, countryCode: '' };
     renderVenuePicked();
     renderPreview();
-    if (venueInput.value.trim()) suggestVenues(venueInput.value); else hide(venueList);
+    if (venueInput.value.trim().length >= 2) suggestVenues(venueInput.value);
+    else { hide(venueList); venueStatus.textContent = ''; }
   });
   venueInput.addEventListener('blur', () => setTimeout(() => hide(venueList), 150));
   cityInput.addEventListener('input', () => { draft.venue.city = cityInput.value; renderPreview(); });
   countryInput.addEventListener('input', () => { draft.venue.country = countryInput.value; renderPreview(); });
 
   async function setVenue(v) {
-    draft.venue = { name: v.name, city: v.city, country: v.country, countryCode: v.countryCode, lat: v.lat, lon: v.lon };
+    draft.venue = { name: v.name, city: v.city, country: v.country, countryCode: v.countryCode, lat: v.lat, lon: v.lon, wikidataId: v.wikidataId || null };
+    venueStatus.textContent = '';
     venueInput.value = v.name;
     cityInput.value = v.city;
     countryInput.value = v.country;
@@ -133,7 +142,7 @@ export function openConcertForm({ mode = 'past', concert, prefill, onSaved } = {
     renderPreview();
     if (!auto || touched.capacity) return;
     capacityStatus.textContent = 'Looking up capacity…';
-    const cap = await findVenueCapacity(v);
+    const cap = v.capacity || await findVenueCapacity(v);
     if (draft.venue.name !== v.name || touched.capacity) return;
     draft.capacity = cap;
     capacityInput.value = cap ?? '';
@@ -256,12 +265,23 @@ export function openConcertForm({ mode = 'past', concert, prefill, onSaved } = {
         draft.ownImageId = null;
       }
       if (!draft.artistImage && auto && !draft.ownImageId) draft.artistImage = await findArtistImage(draft.artist);
+      // Typed the venue by hand? Try to find it so it gets a map pin (and capacity).
+      if (auto && draft.venue.lat == null) {
+        saveBtn.textContent = 'Finding venue…';
+        const found = await resolveVenue(draft.venue.name, draft.venue.city).catch(() => null);
+        if (found) {
+          draft.venue = { ...draft.venue, lat: found.lat, lon: found.lon, wikidataId: found.wikidataId || null,
+            city: draft.venue.city || found.city, country: draft.venue.country || found.country, countryCode: found.countryCode || '' };
+          if (draft.capacity == null && !touched.capacity) draft.capacity = found.capacity || await findVenueCapacity(found);
+        }
+      }
       const saved = await saveItem(draft);
       sheet.close();
       if (!editing) toast(isPast(saved) ? 'Added to your tickets' : 'Added to upcoming shows');
       onSaved?.(saved);
     } catch (err) {
       saveBtn.disabled = false;
+      saveBtn.textContent = editing ? 'Save' : 'Add';
       fail(`Couldn't save: ${err.message || err}`);
     }
   }
@@ -280,7 +300,7 @@ export function openConcertForm({ mode = 'past', concert, prefill, onSaved } = {
       preview,
       errorLine,
       h('div.field', h('span.field-label', 'Artist'), h('div.suggest-wrap', artistInput, artistList)),
-      h('div.field', h('span.field-label', 'Venue'), h('div.suggest-wrap', venueInput, venueList), venuePicked),
+      h('div.field', h('span.field-label', 'Venue'), h('div.suggest-wrap', venueInput, venueList), venueStatus, venuePicked),
       manualLink,
       manualVenue,
       h('label.field', h('span.field-label', 'Date'), dateInput),

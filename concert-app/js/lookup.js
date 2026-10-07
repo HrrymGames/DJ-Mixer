@@ -2,8 +2,8 @@
 // if something can't be found the user just types it in.
 //
 //   Artists + photos  -> Deezer (JSONP), Wikipedia as a fallback for photos
-//   Venues + location -> Photon (OpenStreetMap search)
-//   Venue capacity    -> OpenStreetMap tags via Nominatim, then Wikidata
+//   Venues + location -> Photon (OpenStreetMap search) and Wikidata, in parallel
+//   Venue capacity    -> Wikidata, OpenStreetMap tags via Nominatim
 //   Tour / festival   -> Wikidata, then a Wikipedia search as a fallback
 
 const TIMEOUT = 8000;
@@ -70,45 +70,28 @@ export async function findArtistImage(name) {
 }
 
 // ---------------- venues ----------------
+//
+// Two sources are searched at the same time so one being slow or down doesn't
+// break the suggestions:
+//   Photon   – OpenStreetMap search, good city / country names
+//   Wikidata – knows most arenas, stadiums and theatres, including their capacity
 
 const regionNames = typeof Intl.DisplayNames === 'function' ? new Intl.DisplayNames(['en'], { type: 'region' }) : null;
 const SHORT_COUNTRY = { GB: 'UK', US: 'USA', AE: 'UAE' };
+const SHORT_COUNTRY_NAMES = { 'united kingdom': 'UK', 'united states': 'USA', 'united states of america': 'USA', 'united arab emirates': 'UAE' };
 
 export function countryName(code, fallback = '') {
-  if (!code) return fallback;
+  if (!code) return shortCountry(fallback);
   const c = code.toUpperCase();
   if (SHORT_COUNTRY[c]) return SHORT_COUNTRY[c];
-  try { return regionNames?.of(c) || fallback; } catch { return fallback; }
+  try { return regionNames?.of(c) || shortCountry(fallback); } catch { return shortCountry(fallback); }
+}
+
+export function shortCountry(name) {
+  return SHORT_COUNTRY_NAMES[(name || '').toLowerCase()] || name || '';
 }
 
 const VENUE_KEYS = new Set(['amenity', 'leisure', 'building', 'tourism', 'historic']);
-
-/** Suggestions while typing a venue. */
-export async function searchVenues(query) {
-  if (query.trim().length < 2) return [];
-  try {
-    const res = await fetchJSON(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=8&lang=en`);
-    const list = (res.features || []).map((f) => {
-      const p = f.properties || {};
-      const [lon, lat] = f.geometry?.coordinates || [];
-      const code = (p.countrycode || '').toUpperCase();
-      return {
-        name: p.name || [p.housenumber, p.street].filter(Boolean).join(' ') || query,
-        city: p.city || p.town || p.village || p.district || p.county || p.state || '',
-        country: countryName(code, p.country || ''),
-        countryCode: code,
-        lat, lon,
-        osmType: p.osm_type || '',
-        osmId: p.osm_id || null,
-        kind: p.osm_key || '',
-      };
-    }).filter((v) => v.lat != null);
-    // Real venues (stadiums, arenas, clubs, theatres) before streets and towns.
-    return list.sort((a, b) => (VENUE_KEYS.has(b.kind) ? 1 : 0) - (VENUE_KEYS.has(a.kind) ? 1 : 0));
-  } catch {
-    return [];
-  }
-}
 
 function km(lat1, lon1, lat2, lon2) {
   const r = (d) => (d * Math.PI) / 180;
@@ -117,13 +100,22 @@ function km(lat1, lon1, lat2, lon2) {
 }
 
 const parseCapacity = (v) => {
-  const n = parseInt(String(v).replace(/[^\d]/g, ''), 10);
+  const n = parseInt(String(v ?? '').replace(/[^\d]/g, ''), 10);
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
-async function wikidataEntities(ids) {
-  const res = await fetchJSON(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${ids.join('|')}&props=claims|labels&languages=en&format=json&origin=*`);
+const WD_API = 'https://www.wikidata.org/w/api.php';
+
+async function wikidataEntities(ids, props = 'claims|labels') {
+  if (!ids.length) return {};
+  const res = await fetchJSON(`${WD_API}?action=wbgetentities&ids=${ids.slice(0, 50).join('|')}&props=${props}&languages=en&format=json&origin=*`);
   return res.entities || {};
+}
+
+/** Wikidata full-text search ("co op live" finds "Co-op Live"). Returns Q-ids. */
+async function wikidataSearch(text, mustHave = 'P625', limit = 7) {
+  const res = await fetchJSON(`${WD_API}?action=query&list=search&srsearch=${encodeURIComponent(`${text} haswbstatement:${mustHave}`)}&srnamespace=0&srlimit=${limit}&format=json&origin=*`);
+  return (res.query?.search || []).map((s) => s.title).filter((t) => /^Q\d+$/.test(t));
 }
 
 function claimCapacity(entity) {
@@ -138,10 +130,120 @@ function claimCoords(entity) {
   return v ? { lat: v.latitude, lon: v.longitude } : null;
 }
 
+const claimId = (entity, prop) => entity?.claims?.[prop]?.find((c) => c.rank !== 'deprecated')?.mainsnak?.datavalue?.value?.id || null;
+const label = (entity) => entity?.labels?.en?.value || '';
+const cleanPlace = (s) => s.replace(/^(City|Metropolitan Borough|London Borough|Royal Borough|Borough|County Borough) of /i, '').replace(/\s*\(.*\)$/, '');
+
+async function photonVenues(query) {
+  const res = await fetchJSON(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=8&lang=en`, { timeout: 7000 });
+  return (res.features || []).map((f) => {
+    const p = f.properties || {};
+    const [lon, lat] = f.geometry?.coordinates || [];
+    const code = (p.countrycode || '').toUpperCase();
+    return {
+      name: p.name || [p.housenumber, p.street].filter(Boolean).join(' ') || query,
+      city: p.city || p.town || p.village || p.district || p.county || p.state || '',
+      country: countryName(code, p.country || ''),
+      countryCode: code,
+      lat, lon,
+      osmType: p.osm_type || '',
+      osmId: p.osm_id || null,
+      capacity: null,
+      venueLike: VENUE_KEYS.has(p.osm_key),
+      source: 'osm',
+    };
+  }).filter((v) => v.lat != null && v.lon != null);
+}
+
+async function wikidataVenues(query) {
+  const ids = await wikidataSearch(query, 'P625');
+  const ents = await wikidataEntities(ids);
+  const places = new Set();
+  const rows = ids.map((id) => {
+    const e = ents[id];
+    const c = claimCoords(e);
+    if (!e || !c || !label(e)) return null;
+    const city = claimId(e, 'P131');
+    const country = claimId(e, 'P17');
+    if (city) places.add(city);
+    if (country) places.add(country);
+    return { id, name: label(e), lat: c.lat, lon: c.lon, capacity: claimCapacity(e), cityId: city, countryId: country };
+  }).filter(Boolean);
+  const placeEnts = await wikidataEntities([...places], 'labels').catch(() => ({}));
+  return rows.map((r) => ({
+    name: r.name,
+    city: cleanPlace(label(placeEnts[r.cityId])),
+    country: shortCountry(label(placeEnts[r.countryId])),
+    countryCode: '',
+    lat: r.lat, lon: r.lon,
+    osmType: '', osmId: null,
+    capacity: r.capacity,
+    wikidataId: r.id,
+    venueLike: !!r.capacity,
+    source: 'wikidata',
+  }));
+}
+
+function nameScore(name, query) {
+  const n = norm(name);
+  const words = norm(query).split(' ').filter(Boolean);
+  if (!words.length) return 0;
+  if (n === words.join(' ')) return 3;
+  return words.every((w) => n.includes(w)) ? 2 : words.some((w) => n.includes(w)) ? 1 : 0;
+}
+
+/**
+ * Suggestions while typing a venue.
+ * Returns {results, failed} – failed is true when no source could be reached at all.
+ */
+export async function searchVenues(query) {
+  const q = query.trim();
+  if (q.length < 2) return { results: [], failed: false };
+  const [osm, wd] = await Promise.allSettled([photonVenues(q), wikidataVenues(q)]);
+  const a = osm.status === 'fulfilled' ? osm.value : [];
+  const b = wd.status === 'fulfilled' ? wd.value : [];
+
+  // The same venue from both sources: keep OpenStreetMap's city/country, add Wikidata's capacity.
+  const merged = [...a];
+  for (const w of b) {
+    const twin = merged.find((m) => km(m.lat, m.lon, w.lat, w.lon) < 1.5 && (nameScore(m.name, w.name) >= 2 || nameScore(w.name, m.name) >= 2));
+    if (twin) {
+      twin.capacity = twin.capacity || w.capacity;
+      twin.wikidataId = w.wikidataId;
+      twin.venueLike = true;
+      twin.city = twin.city || w.city;
+      twin.country = twin.country || w.country;
+    } else {
+      merged.push(w);
+    }
+  }
+  const scored = merged.map((v, i) => ({ v, s: nameScore(v.name, q) * 10 + (v.venueLike ? 3 : 0) + (v.capacity ? 2 : 0) - i * 0.01 }));
+  scored.sort((x, y) => y.s - x.s);
+  return { results: scored.slice(0, 8).map((x) => x.v), failed: osm.status === 'rejected' && wd.status === 'rejected' };
+}
+
+/**
+ * Best match for a venue typed by hand (no suggestion picked), e.g. "Co-op Live" + "Manchester".
+ * Only returns something when the name clearly matches.
+ */
+export async function resolveVenue(name, city = '') {
+  if (!name?.trim()) return null;
+  const { results, failed } = await searchVenues(city ? `${name} ${city}` : name);
+  if (failed) throw new Error('Venue search unreachable');
+  let list = results;
+  if (!list.length && city) list = (await searchVenues(name)).results;
+  return list.find((v) => {
+    const exactish = nameScore(v.name, name) >= 2 || nameScore(name, v.name) >= 2;
+    const cityOk = !city || !v.city || norm(v.city).includes(norm(city)) || norm(city).includes(norm(v.city));
+    return exactish && cityOk;
+  }) || null;
+}
+
 /** Venue capacity from OpenStreetMap tags, else Wikidata. Returns a number or null. */
 export async function findVenueCapacity(venue) {
-  let wikidataId = null;
-  if (venue.osmType && venue.osmId) {
+  if (venue.capacity) return venue.capacity;
+  let wikidataId = venue.wikidataId || null;
+  if (!wikidataId && venue.osmType && venue.osmId) {
     try {
       const res = await fetchJSON(`https://nominatim.openstreetmap.org/lookup?osm_ids=${venue.osmType}${venue.osmId}&format=jsonv2&extratags=1`);
       const tags = res?.[0]?.extratags || {};
@@ -155,19 +257,43 @@ export async function findVenueCapacity(venue) {
       const cap = claimCapacity((await wikidataEntities([wikidataId]))[wikidataId]);
       if (cap) return cap;
     }
-    // Search Wikidata by name and only trust a match that is near the venue on the map.
-    const search = await fetchJSON(`https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(venue.name)}&language=en&type=item&limit=6&format=json&origin=*`);
-    const ids = (search.search || []).map((s) => s.id);
-    if (!ids.length) return null;
+    // Search Wikidata for places with a capacity, and only trust one that matches.
+    const ids = await wikidataSearch(venue.name, 'P1083', 6);
     const ents = await wikidataEntities(ids);
     for (const id of ids) {
-      const cap = claimCapacity(ents[id]);
+      const e = ents[id];
+      const cap = claimCapacity(e);
       if (!cap) continue;
-      const c = claimCoords(ents[id]);
-      if (venue.lat != null && c && km(venue.lat, venue.lon, c.lat, c.lon) < 3) return cap;
+      const c = claimCoords(e);
+      if (venue.lat != null && c) { if (km(venue.lat, venue.lon, c.lat, c.lon) < 3) return cap; }
+      else if (nameScore(label(e), venue.name) === 3) return cap;
     }
   } catch { /* give up */ }
   return null;
+}
+
+/** For Settings → "Check connection": which online services this phone can reach. */
+export async function checkServices() {
+  const probe = async (name, fn) => {
+    const t = performance.now();
+    try { await fn(); return { name, ok: true, ms: Math.round(performance.now() - t) }; }
+    catch (e) { return { name, ok: false, detail: e.message || String(e) }; }
+  };
+  const img = (url) => new Promise((resolve, reject) => {
+    const i = new Image();
+    const timer = setTimeout(() => reject(new Error('timeout')), 8000);
+    i.onload = () => { clearTimeout(timer); resolve(); };
+    i.onerror = () => { clearTimeout(timer); reject(new Error('blocked or offline')); };
+    i.src = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
+  });
+  return Promise.all([
+    probe('Artist search (Deezer)', async () => { const r = await jsonp('https://api.deezer.com/search/artist?q=coldplay&limit=1'); if (!r.data) throw new Error('bad reply'); }),
+    probe('Venue search (OpenStreetMap)', () => photonVenues('Wembley Stadium')),
+    probe('Venues & capacity (Wikidata)', () => wikidataSearch('Wembley Stadium')),
+    probe('Capacity (Nominatim)', () => fetchJSON('https://nominatim.openstreetmap.org/lookup?osm_ids=W4244999&format=jsonv2')),
+    probe('Map tiles (OpenStreetMap)', () => img('https://tile.openstreetmap.org/2/2/1.png')),
+    probe('Map tiles (Esri)', () => img('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/2/1/2')),
+  ]);
 }
 
 // ---------------- tours & festivals ----------------

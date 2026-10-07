@@ -1,4 +1,5 @@
-import { loadAll, state, subscribe, todayISO } from './store.js';
+import { loadAll, state, subscribe, todayISO, concerts, getItem, saveItem } from './store.js';
+import { resolveVenue, findVenueCapacity } from './lookup.js';
 import * as mapView from './views/map.js';
 import * as ticketsView from './views/tickets.js';
 import * as wishlistView from './views/wishlist.js';
@@ -118,7 +119,45 @@ async function start() {
   }
 }
 
-start();
+start().then(backfillVenues);
+
+/**
+ * Concerts saved without a map location (or capacity), e.g. because the venue search
+ * couldn't be reached at the time: quietly look them up again in the background.
+ */
+async function backfillVenues() {
+  if (!state.settings.autoLookup || !navigator.onLine) return;
+  const todo = concerts().filter((c) => c.venue?.name && (c.venue.lat == null || c.capacity == null) && !c.venueChecked);
+  for (const c of todo) {
+    try {
+      const fresh = getItem(c.id);
+      if (!fresh) continue;
+      const venue = { ...fresh.venue };
+      let capacity = fresh.capacity;
+      if (venue.lat == null) {
+        const found = await resolveVenue(venue.name, venue.city);
+        if (found) {
+          Object.assign(venue, { lat: found.lat, lon: found.lon, wikidataId: found.wikidataId || null,
+            city: venue.city || found.city, country: venue.country || found.country, countryCode: venue.countryCode || found.countryCode || '' });
+          if (capacity == null) capacity = found.capacity || null;
+        }
+      }
+      if (capacity == null && venue.lat != null) capacity = await findVenueCapacity(venue);
+      // Re-read in case it was edited while we were looking things up.
+      const latest = getItem(c.id);
+      if (!latest) continue;
+      await saveItem({
+        ...latest,
+        venue: latest.venue.lat == null ? venue : latest.venue,
+        capacity: latest.capacity ?? capacity ?? null,
+        venueChecked: true,
+      });
+    } catch {
+      // Search unreachable right now: leave it to try again next time the app opens.
+      return;
+    }
+  }
+}
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});

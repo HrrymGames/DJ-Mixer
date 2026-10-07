@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS = {
   pastOrder: 'newest',      // 'newest' | 'oldest'
   showCountdown: true,      // "in 12 days" badge on upcoming tickets
   mapUpcoming: true,        // show upcoming shows on the map
+  mapStyle: 'detailed',     // 'detailed' (street tiles) | 'simple' (built-in countries only)
   autoLookup: true,         // fill tour / capacity / photo from the internet
 };
 

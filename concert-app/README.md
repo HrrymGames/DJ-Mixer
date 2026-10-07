@@ -42,9 +42,15 @@ Then open <http://localhost:8080>.
 | Detail | Source |
 |---|---|
 | Artist search & photos | Deezer, with Wikipedia as a fallback |
-| Venue search, city, country, map position | Photon / OpenStreetMap |
-| Venue capacity | OpenStreetMap tags, then Wikidata |
+| Venue search, city, country, map position | Photon / OpenStreetMap and Wikidata, searched in parallel |
+| Venue capacity | Wikidata, then OpenStreetMap tags |
 | Tour / festival name | Wikidata, then a Wikipedia search |
-| Map tiles | CARTO (light and dark) |
+| Country map | Natural Earth (built into the app, works offline) |
+| Street detail on the map | OpenStreetMap, then Esri, then CARTO (whichever loads) |
+
+*Settings → Check connection* shows which of these your phone can reach.
+Concerts saved without a map location are looked up again in the background each time the app opens.
+
+Updating the app (a new deploy to the same address) never touches your saved concerts. They're stored on the phone for that web address.
 
 If something can't be found, the field is left for you to type in. Auto-fill can be turned off in Settings.
