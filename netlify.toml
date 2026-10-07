@@ -1,0 +1,4 @@
+# Netlify: the app lives in concert-app/, there is nothing to build.
+[build]
+  publish = "concert-app"
+  command = ""
