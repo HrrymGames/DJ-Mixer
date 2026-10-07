@@ -1,6 +1,7 @@
-import { h, confirmDialog, toast, pickFiles, actionSheet } from '../ui.js';
+import { h, confirmDialog, toast } from '../ui.js';
+import { backupFlow, restoreFlow } from '../backup.js';
 import { checkServices } from '../lookup.js';
-import { state, setSetting, concerts, wishes, isPast, exportBackup, importBackup, deleteEverything } from '../store.js';
+import { state, setSetting, concerts, wishes, isPast, deleteEverything } from '../store.js';
 
 let root;
 
@@ -52,49 +53,6 @@ function statsCard() {
     stat(wishes().length, 'on wishlist'));
 }
 
-function download(blob, name) {
-  const a = h('a', { href: URL.createObjectURL(blob), download: name });
-  document.body.append(a);
-  a.click();
-  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-}
-
-async function backup() {
-  const choice = await actionSheet({
-    title: 'Back up your concerts',
-    actions: [
-      { label: 'Tickets & setlists only (small file)', value: 'light' },
-      { label: 'Everything incl. photos & videos', value: 'full' },
-    ],
-  });
-  if (!choice) return;
-  toast('Preparing backup…');
-  try {
-    const blob = await exportBackup({ includeMedia: choice === 'full' });
-    const stamp = new Date().toISOString().slice(0, 10);
-    const file = new File([blob], `stubs-backup-${stamp}.json`, { type: 'application/json' });
-    // On phones the share sheet lets you save it to Files / iCloud Drive.
-    if (navigator.canShare?.({ files: [file] })) {
-      await navigator.share({ files: [file], title: 'Stubs backup' }).catch(() => {});
-    } else {
-      download(blob, file.name);
-    }
-  } catch (e) {
-    toast(`Backup failed: ${e.message || e}`);
-  }
-}
-
-async function restore() {
-  const [file] = await pickFiles({ accept: 'application/json,.json', multiple: false });
-  if (!file) return;
-  try {
-    const res = await importBackup(file);
-    toast(`Restored ${res.items} ticket${res.items === 1 ? '' : 's'}${res.media ? ` and ${res.media} photos/videos` : ''}`);
-  } catch (e) {
-    toast(e.message || 'Couldn\'t read that backup');
-  }
-}
-
 async function storageLine(el) {
   if (!navigator.storage?.estimate) return;
   const { usage = 0 } = await navigator.storage.estimate();
@@ -141,9 +99,9 @@ function render() {
         checkList,
         h('button.set-button', { type: 'button', onclick: runCheck }, 'Check connection')),
       group('Your data',
-        h('p.set-note', 'Everything is saved on this phone only. Back up now and then so you don\'t lose your tickets if you change phones.'),
-        h('button.set-button', { type: 'button', onclick: backup }, 'Back up…'),
-        h('button.set-button', { type: 'button', onclick: restore }, 'Restore from backup…'),
+        h('p.set-note', 'Everything is saved on this phone only, and the Home Screen app keeps its own copy separate from Safari. To move your concerts: Back up here, then Restore in the other one. Back up now and then in case you change phones.'),
+        h('button.set-button', { type: 'button', onclick: backupFlow }, 'Back up / export…'),
+        h('button.set-button', { type: 'button', onclick: restoreFlow }, 'Restore / import…'),
         h('div.set-row', h('span.set-text', h('span', 'Storage'), storage)),
         h('button.set-button.destructive', {
           type: 'button',

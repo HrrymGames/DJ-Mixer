@@ -16,6 +16,15 @@ A phone app that keeps every concert you've been to as a digital ticket. It work
 
 Everything is saved **on your phone only**. There are no accounts and no server. Use *Settings → Back up* now and then.
 
+### Moving your concerts (Safari → Home Screen app, or to a new phone)
+
+On an iPhone, the Home Screen app keeps its own storage, separate from the same site in Safari.
+
+1. Open the copy that has your concerts (e.g. the site in Safari) → **Settings → Back up / export… → Everything** → **Save** → *Save to Files*.
+2. Open the other copy (e.g. the Home Screen app) → on the empty Tickets page tap **Already have tickets saved somewhere else?** (or **Settings → Restore / import…**) and pick the file.
+
+Restoring adds to what's already there and never deletes anything. Older `.json` backups still work.
+
 ## Offline
 
 Once it's on your Home Screen and has been opened once with signal, the app works with no connection:

@@ -206,37 +206,83 @@ export async function itemImage(item) {
 }
 
 // ---------- backup ----------
-function blobToDataURL(blob) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result);
-    r.onerror = () => reject(r.error);
-    r.readAsDataURL(blob);
-  });
-}
+//
+// Backup file layout (version 2), designed so big videos never have to be turned into
+// one giant string in memory (which crashes iPhones):
+//   "STUBSBAK1\n" + 12-digit header length + header JSON + every photo/video, back to back.
+// Older JSON backups (version 1, media as base64) can still be restored.
+
+const MAGIC = 'STUBSBAK1\n';
 
 export async function exportBackup({ includeMedia }) {
-  const out = { app: 'stubs', version: 1, exportedAt: new Date().toISOString(), items: state.items, media: [] };
-  if (includeMedia) {
-    const media = await db.getAll('media');
-    for (const m of media) out.media.push({ id: m.id, type: m.type, name: m.name, createdAt: m.createdAt, data: await blobToDataURL(m.blob) });
-  }
-  return new Blob([JSON.stringify(out)], { type: 'application/json' });
+  const media = includeMedia ? await db.getAll('media') : [];
+  const header = {
+    app: 'stubs',
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    items: state.items,
+    settings: state.settings,
+    media: media.map((m) => ({ id: m.id, type: m.type, name: m.name, createdAt: m.createdAt, size: m.blob.size })),
+  };
+  const headerBytes = new TextEncoder().encode(JSON.stringify(header));
+  return new Blob([MAGIC, String(headerBytes.length).padStart(12, '0'), headerBytes, ...media.map((m) => m.blob)],
+    { type: 'application/octet-stream' });
 }
 
-export async function importBackup(file) {
-  const data = JSON.parse(await file.text());
-  if (data.app !== 'stubs' || !Array.isArray(data.items)) throw new Error('This file is not a Stubs backup.');
-  const media = [];
-  for (const m of data.media || []) {
-    const blob = await (await fetch(m.data)).blob();
-    media.push({ id: m.id, type: m.type, name: m.name, createdAt: m.createdAt, blob });
+/**
+ * Adds everything from a backup to this app (nothing already here is deleted).
+ * onProgress(done, total) is called while photos/videos are copied in.
+ */
+export async function importBackup(file, onProgress) {
+  const wasEmpty = state.items.length === 0;
+  const start = await file.slice(0, MAGIC.length).text();
+  let items;
+  let settings = null;
+  let mediaCount = 0;
+
+  if (start === MAGIC) {
+    const len = parseInt(await file.slice(MAGIC.length, MAGIC.length + 12).text(), 10);
+    const headerStart = MAGIC.length + 12;
+    const header = JSON.parse(await file.slice(headerStart, headerStart + len).text());
+    if (header.app !== 'stubs' || !Array.isArray(header.items)) throw new Error('This file is not a Stubs backup.');
+    items = header.items;
+    settings = header.settings || null;
+    let offset = headerStart + len;
+    for (const [i, m] of header.media.entries()) {
+      const blob = file.slice(offset, offset + m.size, m.type);
+      offset += m.size;
+      // One at a time keeps memory low with lots of videos.
+      await db.put('media', { id: m.id, type: m.type, name: m.name, createdAt: m.createdAt, blob });
+      mediaCount++;
+      onProgress?.(i + 1, header.media.length);
+    }
+  } else {
+    // Version 1: a plain JSON file.
+    const data = JSON.parse(await file.text());
+    if (data.app !== 'stubs' || !Array.isArray(data.items)) throw new Error('This file is not a Stubs backup.');
+    items = data.items;
+    for (const [i, m] of (data.media || []).entries()) {
+      const blob = await (await fetch(m.data)).blob();
+      await db.put('media', { id: m.id, type: m.type, name: m.name, createdAt: m.createdAt, blob });
+      mediaCount++;
+      onProgress?.(i + 1, data.media.length);
+    }
   }
-  if (media.length) await db.putMany('media', media);
-  await db.putMany('items', data.items);
+
+  await db.putMany('items', items);
+  // Moving into a fresh app (e.g. the Home Screen version): bring your settings too.
+  if (wasEmpty && settings) {
+    state.settings = { ...state.settings, ...settings };
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings)); } catch { /* private mode */ }
+  }
   await loadAll();
   emit({ type: 'reload' });
-  return { items: data.items.length, media: media.length };
+  if (wasEmpty && settings) emit({ type: 'settings', key: 'theme' });
+  return {
+    concerts: items.filter((i) => i.kind === 'concert').length,
+    wishes: items.filter((i) => i.kind === 'wish').length,
+    media: mediaCount,
+  };
 }
 
 export async function deleteEverything() {

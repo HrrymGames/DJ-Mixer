@@ -1,5 +1,6 @@
 import { h, addBar } from '../ui.js';
-import { pastConcerts, upcomingConcerts } from '../store.js';
+import { pastConcerts, upcomingConcerts, state } from '../store.js';
+import { restoreFlow } from '../backup.js';
 import { ticketEl } from '../ticket.js';
 import { nav } from '../nav.js';
 import { openConcertForm } from './concertForm.js';
@@ -26,6 +27,9 @@ function render() {
 
     h('div.page-body',
       addBar('Add New', () => openConcertForm({ mode: 'past' })),
+      !state.items.length && h('button.restore-card', { type: 'button', onclick: restoreFlow },
+        h('strong', 'Already have tickets saved somewhere else?'),
+        h('span', 'The Home Screen app and Safari keep separate copies. Back up in the other one (Settings → Back up), then tap here to restore.')),
       h('div.ticket-list',
         past.length
           ? past.map((c) => ticketEl(c, { onClick: () => nav.openConcert(c.id) }))

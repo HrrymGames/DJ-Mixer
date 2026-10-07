@@ -524,3 +524,14 @@ button.map-stats.has-missing { cursor: pointer; }
 .check-list .ok { color: #1f9d55; font-weight: 700; white-space: nowrap; }
 .check-list .bad { color: var(--danger); font-weight: 700; white-space: nowrap; }
 :root[data-theme="dark"] .check-list .ok { color: #34c759; }
+
+/* ---- restore prompt on an empty Tickets page ---- */
+.restore-card {
+  display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left;
+  padding: 14px 16px; margin: 0 0 14px; border-radius: var(--radius);
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--card));
+}
+.restore-card strong { color: var(--accent); font-size: 16px; }
+.restore-card span { color: var(--text-2); font-size: 14px; }
+.restore-card:active { transform: scale(0.98); }
