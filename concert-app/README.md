@@ -16,6 +16,17 @@ A phone app that keeps every concert you've been to as a digital ticket. It work
 
 Everything is saved **on your phone only**. There are no accounts and no server. Use *Settings → Back up* now and then.
 
+## Offline
+
+Once it's on your Home Screen and has been opened once with signal, the app works with no connection:
+
+- Opening the app, your tickets, setlists, videos and photos: everything is stored on the phone.
+- Artist photos and map areas you've already seen are saved too. The country map is built in.
+- You can add concerts offline: type the venue and city by hand. The artist photo, tour, map pin and capacity fill in by themselves next time you have signal.
+- Only the live search suggestions need a connection.
+
+Use the Home Screen version rather than a Safari tab. iPhones can clear website data for sites you haven't visited in a while, but not for apps added to the Home Screen.
+
 ## Putting it on your phone
 
 The app is just these files. They need to be hosted at an `https://` address, then:

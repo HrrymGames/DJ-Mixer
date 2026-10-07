@@ -92,7 +92,8 @@ function openWishForm() {
       draft.artist = input.value.trim();
       if (!draft.artist) { input.focus(); return; }
       saveBtn.disabled = true;
-      if (!draft.artistImage && state.settings.autoLookup) draft.artistImage = await findArtistImage(draft.artist);
+      if (!draft.artistImage && state.settings.autoLookup && navigator.onLine) draft.artistImage = await findArtistImage(draft.artist);
+      if (!navigator.onLine && state.settings.autoLookup) draft.pendingLookup = true;
       await saveItem(draft);
       sheet.close();
       toast(`${draft.artist} added to your wishlist`);

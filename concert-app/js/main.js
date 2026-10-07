@@ -1,5 +1,5 @@
 import { loadAll, state, subscribe, todayISO, concerts, getItem, saveItem } from './store.js';
-import { resolveVenue, findVenueCapacity } from './lookup.js';
+import { resolveVenue, findVenueCapacity, findArtistImage, findTour } from './lookup.js';
 import * as mapView from './views/map.js';
 import * as ticketsView from './views/tickets.js';
 import * as wishlistView from './views/wishlist.js';
@@ -119,7 +119,42 @@ async function start() {
   }
 }
 
-start().then(backfillVenues);
+start().then(backfill);
+// Back online after being offline: fill in anything that was added without signal.
+window.addEventListener('online', () => setTimeout(backfill, 1500));
+
+let backfilling = false;
+async function backfill() {
+  if (backfilling) return;
+  backfilling = true;
+  try {
+    await backfillOffline();
+    await backfillVenues();
+  } finally {
+    backfilling = false;
+  }
+}
+
+/** Concerts / wishlist added with no signal: find the artist photo and tour now. */
+async function backfillOffline() {
+  if (!state.settings.autoLookup || !navigator.onLine) return;
+  for (const item of state.items.filter((i) => i.pendingLookup)) {
+    const fresh = getItem(item.id);
+    if (!fresh) continue;
+    const patch = {};
+    if (!fresh.artistImage && !fresh.ownImageId) {
+      const img = await findArtistImage(fresh.artist);
+      if (!img) return; // probably still no signal – try again later
+      patch.artistImage = img;
+    }
+    if (fresh.kind === 'concert' && !fresh.tour) {
+      const tour = await findTour(fresh.artist, fresh.date);
+      if (tour) Object.assign(patch, { tour: tour.name, eventType: tour.type });
+    }
+    const latest = getItem(item.id);
+    if (latest) await saveItem({ ...latest, ...patch, pendingLookup: false });
+  }
+}
 
 /**
  * Concerts saved without a map location (or capacity), e.g. because the venue search
@@ -159,6 +194,6 @@ async function backfillVenues() {
   }
 }
 
-if ('serviceWorker' in navigator && location.protocol === 'https:') {
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }

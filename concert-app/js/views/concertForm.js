@@ -264,9 +264,9 @@ export function openConcertForm({ mode = 'past', concert, prefill, onSaved } = {
         await deleteMedia([draft.ownImageId]);
         draft.ownImageId = null;
       }
-      if (!draft.artistImage && auto && !draft.ownImageId) draft.artistImage = await findArtistImage(draft.artist);
+      if (!draft.artistImage && auto && navigator.onLine && !draft.ownImageId) draft.artistImage = await findArtistImage(draft.artist);
       // Typed the venue by hand? Try to find it so it gets a map pin (and capacity).
-      if (auto && draft.venue.lat == null) {
+      if (auto && navigator.onLine && draft.venue.lat == null) {
         saveBtn.textContent = 'Finding venue…';
         const found = await resolveVenue(draft.venue.name, draft.venue.city).catch(() => null);
         if (found) {
@@ -275,6 +275,7 @@ export function openConcertForm({ mode = 'past', concert, prefill, onSaved } = {
           if (draft.capacity == null && !touched.capacity) draft.capacity = found.capacity || await findVenueCapacity(found);
         }
       }
+      if (!navigator.onLine && auto) draft.pendingLookup = true;
       const saved = await saveItem(draft);
       sheet.close();
       if (!editing) toast(isPast(saved) ? 'Added to your tickets' : 'Added to upcoming shows');
