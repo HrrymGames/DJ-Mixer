@@ -535,3 +535,18 @@ button.map-stats.has-missing { cursor: pointer; }
 .restore-card strong { color: var(--accent); font-size: 16px; }
 .restore-card span { color: var(--text-2); font-size: 14px; }
 .restore-card:active { transform: scale(0.98); }
+
+/* ---- iPhone app: videos linked from the camera roll ---- */
+.linked-play { position: relative; display: block; width: 100%; height: 100%; background: #000; }
+.linked-play img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.tag-linked { height: min(58dvh, 620px); }
+.play-badge {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 72px; height: 72px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: rgba(0, 0, 0, 0.55); color: #fff;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.play-badge svg { width: 34px; height: 34px; margin-left: 4px; }
+.linked-play:active .play-badge { transform: translate(-50%, -50%) scale(0.92); }
+.song-main { -webkit-touch-callout: none; }

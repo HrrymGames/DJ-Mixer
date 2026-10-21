@@ -194,6 +194,7 @@ async function backfillVenues() {
   }
 }
 
-if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+// (Not in the iPhone app: its files are already on the phone.)
+if (!window.Capacitor?.isNativePlatform?.() && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }

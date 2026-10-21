@@ -1,0 +1,10 @@
+{
+  "appId": "com.hrrymgames.setlistic",
+  "appName": "Setlistic",
+  "webDir": "../concert-app",
+  "backgroundColor": "#111213",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#111213"
+  }
+}

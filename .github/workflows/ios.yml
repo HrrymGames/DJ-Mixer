@@ -1,0 +1,67 @@
+# Builds the Setlistic iPhone app on a cloud Mac and attaches an unsigned .ipa to the run.
+# Install it with Sideloadly or AltStore (free Apple ID) from a Windows PC: they sign it for your phone.
+name: Build iPhone app
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'concert-app/**'
+      - 'native/**'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ios-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: native/package-lock.json
+
+      - name: Install Capacitor
+        working-directory: native
+        run: npm ci
+
+      - name: Copy the web app into the iPhone project
+        working-directory: native
+        run: npx cap sync ios
+
+      - name: Build (unsigned)
+        working-directory: native/ios/App
+        run: |
+          set -o pipefail
+          xcodebuild -version
+          xcodebuild \
+            -project App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee build.log | grep -E "error:|warning: .*PhotoLink|BUILD (SUCCEEDED|FAILED)" || true
+          test -d build/Build/Products/Release-iphoneos/App.app || { echo "::error::Build failed"; tail -n 80 build.log; exit 1; }
+
+      - name: Package .ipa
+        working-directory: native/ios/App
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -qry Setlistic.ipa Payload
+          ls -lh Setlistic.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Setlistic-ipa
+          path: native/ios/App/Setlistic.ipa
+          retention-days: 30

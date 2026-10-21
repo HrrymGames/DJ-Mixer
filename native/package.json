@@ -1,0 +1,17 @@
+{
+  "name": "setlistic-native",
+  "description": "iPhone app wrapper for the Setlistic concert app (concert-app/).",
+  "scripts": {
+    "sync": "cap sync ios"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/ios": "^8.5.3",
+    "@capacitor/share": "^8.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3"
+  },
+  "private": true
+}

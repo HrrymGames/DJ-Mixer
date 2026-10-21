@@ -1,6 +1,7 @@
 import { h, confirmDialog, toast } from '../ui.js';
 import { backupFlow, restoreFlow } from '../backup.js';
 import { checkServices } from '../lookup.js';
+import { isNative } from '../native.js';
 import { state, setSetting, concerts, wishes, isPast, deleteEverything } from '../store.js';
 
 let root;
@@ -113,7 +114,7 @@ function render() {
           },
         }, 'Delete all data')),
       group('About',
-        h('div.set-row', h('span.set-text', h('span', 'Stubs'), h('small', 'Version 1.0'))),
+        h('div.set-row', h('span.set-text', h('span', 'Setlistic'), h('small', isNative ? 'Version 2.0 · iPhone app' : 'Version 2.0'))),
         h('p.set-note', 'Artist photos from Deezer and Wikipedia. Venues and capacities from OpenStreetMap and Wikidata. Tours from Wikidata and Wikipedia. Map from Natural Earth (built in), with OpenStreetMap, Esri or CARTO street tiles.')),
     ),
   );

@@ -3,7 +3,9 @@ import { getItem, saveItem, deleteItem, addMedia, deleteMedia, itemImage, mediaU
 import { nav } from '../nav.js';
 import { openConcertForm } from './concertForm.js';
 import { tagVideos } from './videoTagger.js';
-import { openSongVideos } from './videoViewer.js';
+import { openSong, songActions } from './videoViewer.js';
+import { isNative } from '../native.js';
+import { pickLinked } from '../linked.js';
 import { openPhotoViewer } from './photoViewer.js';
 import { makeSortable } from '../sortable.js';
 
@@ -130,13 +132,14 @@ async function moreActions(c) {
 function renderSetlist(c) {
   const el = parts.setlistEl;
   el.replaceChildren(...c.setlist.map((song, i) => h('li.song', { 'data-id': song.id },
-    h('button.song-main', { type: 'button', onclick: () => openSongVideos(c.id, song.id) },
+    h('button.song-main', { type: 'button', onclick: (e) => { if (!e.currentTarget.longPressed) openSong(c.id, song.id); } },
       h('span.song-num', `${i + 1}.`),
       h('span.song-text',
         h('span.song-title', song.title || 'Untitled'),
         song.videoIds.length > 1 && h('span.song-meta', `${song.videoIds.length} videos`))),
     h('button.drag-handle', { type: 'button', 'aria-label': `Move ${song.title || 'song'}`, html: ICONS.grip }))));
   el.hidden = !c.setlist.length;
+  el.querySelectorAll('.song-main').forEach((btn) => onLongPress(btn, () => songActions(c.id, btn.closest('.song').dataset.id)));
 
   makeSortable(el, {
     handle: '.drag-handle',
@@ -152,12 +155,35 @@ function renderSetlist(c) {
   });
 }
 
+/** Hold a song for half a second to get its options (rename, remove…). */
+function onLongPress(el, fn) {
+  let timer = null;
+  let start = null;
+  el.addEventListener('pointerdown', (e) => {
+    el.longPressed = false;
+    start = [e.clientX, e.clientY];
+    timer = setTimeout(() => { el.longPressed = true; navigator.vibrate?.(10); fn(); }, 500);
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (timer && start && Math.hypot(e.clientX - start[0], e.clientY - start[1]) > 10) { clearTimeout(timer); timer = null; }
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => el.addEventListener(t, () => { clearTimeout(timer); timer = null; }));
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+
 const songKey = (t) => t.trim().toLowerCase().replace(/\s+/g, ' ');
 
 async function addVideos(id) {
-  const files = await pickFiles({ accept: 'video/*', multiple: true });
-  if (!files.length) return;
-  const videoIds = await addMedia(files);
+  let videoIds;
+  if (isNative) {
+    // iPhone app: link to the videos in the camera roll (no copies, no waiting).
+    videoIds = await pickLinked('video');
+  } else {
+    const files = await pickFiles({ accept: 'video/*', multiple: true });
+    if (!files.length) return;
+    videoIds = await addMedia(files);
+  }
+  if (!videoIds.length) return;
   const tagged = await tagVideos(videoIds);
   if (!tagged) { await deleteMedia(videoIds); return; }
 
@@ -187,9 +213,15 @@ function renderPhotos(c) {
 }
 
 async function addPhotos(id) {
-  const files = await pickFiles({ accept: 'image/*', multiple: true });
-  if (!files.length) return;
-  const ids = await addMedia(files);
+  let ids;
+  if (isNative) {
+    ids = await pickLinked('image');
+  } else {
+    const files = await pickFiles({ accept: 'image/*', multiple: true });
+    if (!files.length) return;
+    ids = await addMedia(files);
+  }
+  if (!ids.length) return;
   const c = getItem(id);
   await saveItem({ ...c, photoIds: [...c.photoIds, ...ids] });
   toast(`${ids.length} photo${ids.length === 1 ? '' : 's'} added`);

@@ -1,5 +1,7 @@
 import { h, overlay, ICONS, confirmDialog } from '../ui.js';
 import { mediaURL, concerts } from '../store.js';
+import { isLinked } from '../native.js';
+import { playLinked } from '../linked.js';
 
 /**
  * After picking videos, show them one at a time so each can be given a song name.
@@ -17,6 +19,21 @@ export function tagVideos(videoIds) {
     const soundBtn = h('button.sound-btn', { type: 'button', hidden: true, 'aria-label': 'Turn sound on' });
     soundBtn.innerHTML = ICONS.mute + '<span>Tap for sound</span>';
     soundBtn.addEventListener('click', () => { video.muted = false; soundBtn.hidden = true; video.play().catch(() => {}); });
+
+    // iPhone app: camera-roll videos show a preview and play full screen from Photos.
+    const thumb = h('img.tag-thumb', { alt: '' });
+    const linkedPlay = h('button.linked-play.tag-linked', {
+      type: 'button',
+      hidden: true,
+      'aria-label': 'Play video',
+      onclick: () => playCurrentLinked(),
+    }, thumb, h('span.play-badge', { html: ICONS.play }));
+    let playedIndex = -1;
+    async function playCurrentLinked() {
+      playedIndex = index;
+      await playLinked([videoIds[index]]);
+      input.focus();
+    }
 
     // Suggest song names already used anywhere in the app.
     const known = [...new Set(concerts().flatMap((c) => c.setlist.map((s) => s.title)).filter(Boolean))];
@@ -43,7 +60,7 @@ export function tagVideos(videoIds) {
       },
     },
     h('div.tagger-bar', backBtn, counter, nextBtn),
-    h('div.tag-video-wrap', video, soundBtn),
+    h('div.tag-video-wrap', video, linkedPlay, soundBtn),
     h('label.field.song-field', h('span.field-label', 'Song name'), input, datalist));
 
     backBtn.addEventListener('click', async () => {
@@ -57,7 +74,20 @@ export function tagVideos(videoIds) {
       backBtn.textContent = index === 0 ? 'Cancel' : 'Back';
       nextBtn.textContent = index === videoIds.length - 1 ? 'Done' : 'Next';
       input.value = titles[index];
-      video.src = await mediaURL(videoIds[index]);
+      const id = videoIds[index];
+      if (isLinked(id)) {
+        video.pause();
+        video.hidden = true;
+        soundBtn.hidden = true;
+        linkedPlay.hidden = false;
+        thumb.src = await mediaURL(id);
+        // Auto-play each new video once (a short pause lets the photo picker finish closing).
+        if (playedIndex !== index) setTimeout(() => { if (videoIds[index] === id && playedIndex !== index) playCurrentLinked(); }, 650);
+        return;
+      }
+      linkedPlay.hidden = true;
+      video.hidden = false;
+      video.src = await mediaURL(id);
       autoplay(video, soundBtn);
     }
 

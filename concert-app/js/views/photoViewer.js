@@ -1,5 +1,7 @@
 import { h, overlay, ICONS, confirmDialog } from '../ui.js';
 import { getItem, saveItem, mediaURL, deleteMedia } from '../store.js';
+import { isLinked } from '../native.js';
+import { linkedImageURL } from '../linked.js';
 
 /** Full-screen photo viewer: swipe left/right, delete. */
 export function openPhotoViewer(concertId, startIndex) {
@@ -10,10 +12,22 @@ export function openPhotoViewer(concertId, startIndex) {
   const counter = h('span.viewer-counter');
   const slides = ids.map((pid) => {
     const img = h('img', { alt: '', decoding: 'async' });
-    mediaURL(pid).then((u) => { img.src = u; });
-    return h('div.photo-slide', img);
+    mediaURL(pid).then((u) => { if (!img.dataset.full) img.src = u; });
+    return h('div.photo-slide', { 'data-id': pid }, img);
   });
   const track = h('div.photo-track', slides);
+
+  // iPhone app: linked photos start as the small preview, then load full size from Photos when shown.
+  const io = new IntersectionObserver((entries) => {
+    for (const en of entries) {
+      const pid = en.target.dataset.id;
+      const img = en.target.querySelector('img');
+      if (!en.isIntersecting || !isLinked(pid) || img.dataset.full) continue;
+      img.dataset.full = '1';
+      linkedImageURL(pid).then((u) => { img.src = u; }).catch(() => { img.dataset.full = ''; });
+    }
+  }, { root: track, rootMargin: '0px 100%' });
+  slides.forEach((s) => io.observe(s));
   const current = () => Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
   const updateCounter = () => { counter.textContent = `${current() + 1} of ${ids.length}`; };
   track.addEventListener('scroll', updateCounter, { passive: true });
@@ -36,7 +50,7 @@ export function openPhotoViewer(concertId, startIndex) {
         },
       })),
     track,
-  ), { variant: 'full' });
+  ), { variant: 'full', onClose: () => io.disconnect() });
 
   requestAnimationFrame(() => {
     track.scrollLeft = startIndex * track.clientWidth;

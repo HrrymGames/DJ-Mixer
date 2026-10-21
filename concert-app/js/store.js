@@ -1,4 +1,5 @@
 import { db } from './db.js';
+import { LINK_PREFIX, base64ToBlob } from './native.js';
 
 // ---------- settings (small, kept in localStorage) ----------
 const SETTINGS_KEY = 'stubs.settings';
@@ -172,6 +173,24 @@ export async function addMedia(files) {
   return records.map((r) => r.id);
 }
 
+/**
+ * iPhone app only: save links to camera-roll items (from PhotoLink.pick) instead of copies.
+ * Only a small preview image is stored; the video/photo itself stays in Photos.
+ */
+export async function addLinked(items) {
+  const records = items.map((it) => ({
+    id: `${LINK_PREFIX}${uid()}:${it.id}`,
+    blob: base64ToBlob(it.thumb),
+    type: 'image/jpeg',
+    name: '',
+    createdAt: Date.now(),
+    link: { kind: it.type, localId: it.id, duration: it.duration, created: it.created },
+  }));
+  await db.putMany('media', records);
+  records.forEach((r) => urlCache.set(r.id, URL.createObjectURL(r.blob)));
+  return records.map((r) => r.id);
+}
+
 export async function mediaURL(id) {
   if (urlCache.has(id)) return urlCache.get(id);
   const rec = await db.get('media', id);
@@ -244,7 +263,7 @@ export async function importBackup(file, onProgress) {
     const len = parseInt(await file.slice(MAGIC.length, MAGIC.length + 12).text(), 10);
     const headerStart = MAGIC.length + 12;
     const header = JSON.parse(await file.slice(headerStart, headerStart + len).text());
-    if (header.app !== 'stubs' || !Array.isArray(header.items)) throw new Error('This file is not a Stubs backup.');
+    if (header.app !== 'stubs' || !Array.isArray(header.items)) throw new Error('This file is not a Setlistic backup.');
     items = header.items;
     settings = header.settings || null;
     let offset = headerStart + len;
@@ -259,7 +278,7 @@ export async function importBackup(file, onProgress) {
   } else {
     // Version 1: a plain JSON file.
     const data = JSON.parse(await file.text());
-    if (data.app !== 'stubs' || !Array.isArray(data.items)) throw new Error('This file is not a Stubs backup.');
+    if (data.app !== 'stubs' || !Array.isArray(data.items)) throw new Error('This file is not a Setlistic backup.');
     items = data.items;
     for (const [i, m] of (data.media || []).entries()) {
       const blob = await (await fetch(m.data)).blob();
