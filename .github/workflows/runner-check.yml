@@ -1,9 +1,0 @@
-# Tiny diagnostic: checks that GitHub Actions can start a job on this account at all.
-name: Runner check
-on:
-  workflow_dispatch:
-jobs:
-  linux:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Linux runner OK"
