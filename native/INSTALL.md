@@ -10,7 +10,9 @@ Apple ID — use a personal or spare one, never a school one.
 > appdb's free option (error -80045/-80046). **iLoader 2.3.10+** (github.com/nab138/iloader → Releases →
 > Windows installer) worked: sign in, pick an anisette server from its built-in list (Reset anisette if it
 > errors), then **Import IPA** → `Setlistic.ipa`. Refresh weekly the same way. If a tool fails with -80045,
-> don't keep retrying — Apple temporarily locks repeated attempts. Apple makes free installs expire after **7 days**, so it needs a quick refresh once a week.
+> don't keep retrying — Apple temporarily locks repeated attempts.
+
+Apple makes free installs expire after **7 days**, so it needs a quick refresh once a week.
 Your concerts are kept when you refresh.
 
 ## One-time setup on your laptop
