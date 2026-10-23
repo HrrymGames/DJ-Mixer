@@ -2,7 +2,8 @@ import { h, confirmDialog, toast } from '../ui.js';
 import { backupFlow, restoreFlow } from '../backup.js';
 import { checkServices } from '../lookup.js';
 import { isNative } from '../native.js';
-import { state, setSetting, concerts, wishes, isPast, deleteEverything } from '../store.js';
+import { concertGuests } from '../songs.js';
+import { state, setSetting, concerts, isPast, deleteEverything } from '../store.js';
 
 let root;
 
@@ -44,6 +45,8 @@ function statsCard() {
   const countries = new Set(past.map((c) => c.venue?.countryCode || c.venue?.country).filter(Boolean));
   const songs = past.reduce((n, c) => n + c.setlist.length, 0);
   const photos = concerts().reduce((n, c) => n + c.photoIds.length, 0);
+  // A guest who came out for several songs at one show counts once for that show.
+  const guests = past.reduce((n, c) => n + concertGuests(c).size, 0);
   const stat = (n, label) => h('div.stat', h('strong', String(n)), h('span', label));
   return h('div.stats-card',
     stat(past.length, past.length === 1 ? 'show' : 'shows'),
@@ -51,7 +54,7 @@ function statsCard() {
     stat(countries.size, countries.size === 1 ? 'country' : 'countries'),
     stat(songs, songs === 1 ? 'song filmed' : 'songs filmed'),
     stat(photos, photos === 1 ? 'photo' : 'photos'),
-    stat(wishes().length, 'on wishlist'));
+    stat(guests, guests === 1 ? 'special guest' : 'special guests'));
 }
 
 async function storageLine(el) {
@@ -89,7 +92,7 @@ function render() {
       group('Appearance',
         row('Theme', segmented('theme', [['system', 'Auto'], ['light', 'Light'], ['dark', 'Dark']]), 'Auto follows your phone\'s setting')),
       group('Tickets',
-        row('Open the app on', segmented('startTab', [['tickets', 'Tickets'], ['map', 'Map'], ['wishlist', 'Wishlist']])),
+        row('Open the app on', segmented('startTab', [['tickets', 'Tickets'], ['map', 'Map'], ['featured', 'Featured'], ['wishlist', 'Wishlist']])),
         row('Order of past tickets', segmented('pastOrder', [['newest', 'Newest first'], ['oldest', 'Oldest first']])),
         toggle('showCountdown', 'Countdown on upcoming tickets', '"In 12 days" badge on the ticket')),
       group('Map',

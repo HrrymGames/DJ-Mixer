@@ -6,6 +6,7 @@ import { tagVideos } from './videoTagger.js';
 import { openSong, songActions } from './videoViewer.js';
 import { isNative } from '../native.js';
 import { pickLinked } from '../linked.js';
+import { guestNotes } from '../songs.js';
 import { openPhotoViewer } from './photoViewer.js';
 import { makeSortable } from '../sortable.js';
 
@@ -131,11 +132,12 @@ async function moreActions(c) {
 
 function renderSetlist(c) {
   const el = parts.setlistEl;
+  const notes = guestNotes(c.setlist);
   el.replaceChildren(...c.setlist.map((song, i) => h('li.song', { 'data-id': song.id },
     h('button.song-main', { type: 'button', onclick: (e) => { if (!e.currentTarget.longPressed) openSong(c.id, song.id); } },
       h('span.song-num', `${i + 1}.`),
       h('span.song-text',
-        h('span.song-title', song.title || 'Untitled'),
+        h('span.song-title', song.title || 'Untitled', notes[i] && h('span.song-guest', ` (${notes[i]})`)),
         song.videoIds.length > 1 && h('span.song-meta', `${song.videoIds.length} videos`))),
     h('button.drag-handle', { type: 'button', 'aria-label': `Move ${song.title || 'song'}`, html: ICONS.grip }))));
   el.hidden = !c.setlist.length;
@@ -189,12 +191,16 @@ async function addVideos(id) {
 
   const c = getItem(id);
   const setlist = c.setlist.map((s) => ({ ...s, videoIds: [...s.videoIds] }));
-  for (const { id: vid, title } of tagged) {
+  for (const { id: vid, title, guest = '' } of tagged) {
     const key = songKey(title);
     // Same song name again (e.g. two clips of the chorus) = one setlist entry with both videos.
     const existing = key && setlist.find((s) => songKey(s.title) === key);
-    if (existing) existing.videoIds.push(vid);
-    else setlist.push({ id: uid(), title: title.trim(), videoIds: [vid] });
+    if (existing) {
+      existing.videoIds.push(vid);
+      if (guest.trim() && !existing.guest) existing.guest = guest.trim();
+    } else {
+      setlist.push({ id: uid(), title: title.trim(), guest: guest.trim(), videoIds: [vid] });
+    }
   }
   await saveItem({ ...c, setlist });
   toast(`${tagged.length} video${tagged.length === 1 ? '' : 's'} added to the setlist`);

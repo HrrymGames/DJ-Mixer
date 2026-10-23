@@ -5,11 +5,12 @@ import { playLinked } from '../linked.js';
 
 /**
  * After picking videos, show them one at a time so each can be given a song name.
- * Resolves with [{id, title}] in the order picked, or null if cancelled.
+ * Resolves with [{id, title, guest}] in the order picked, or null if cancelled.
  */
 export function tagVideos(videoIds) {
   return new Promise((resolve) => {
     const titles = videoIds.map(() => '');
+    const guests = videoIds.map(() => '');
     let index = 0;
     let result = null;
 
@@ -44,6 +45,25 @@ export function tagVideos(videoIds) {
     });
     input.addEventListener('input', () => { titles[index] = input.value; });
 
+    // "+ Add special guest": a grey bar that turns into a text box when tapped.
+    const knownGuests = [...new Set(concerts().flatMap((c) => c.setlist.map((s) => s.guest)).filter(Boolean))];
+    const guestListId = `guests-${Date.now()}`;
+    const guestList = h('datalist', { id: guestListId }, knownGuests.map((g) => h('option', { value: g })));
+    const guestInput = h('input.text-input.song-input.guest-input', {
+      type: 'text', placeholder: 'Special guest, e.g. Playboi Carti', autocapitalize: 'words', autocomplete: 'off', enterkeyhint: 'next', list: guestListId, hidden: true,
+    });
+    guestInput.addEventListener('input', () => { guests[index] = guestInput.value; });
+    const guestBar = h('button.guest-bar', {
+      type: 'button',
+      onclick: () => { guestBar.hidden = true; guestInput.hidden = false; guestInput.focus(); },
+    }, h('span.guest-plus', { html: ICONS.plus }), 'Add special guest');
+    const showGuest = () => {
+      guestInput.value = guests[index];
+      const has = !!guests[index].trim();
+      guestInput.hidden = !has;
+      guestBar.hidden = has;
+    };
+
     const counter = h('span.tag-counter');
     const backBtn = h('button.nav-btn', { type: 'button' });
     const nextBtn = h('button.nav-btn.strong', { type: 'submit' });
@@ -52,19 +72,22 @@ export function tagVideos(videoIds) {
       onsubmit: (e) => {
         e.preventDefault();
         titles[index] = input.value.trim();
+        guests[index] = guestInput.value.trim();
         if (index < videoIds.length - 1) { index++; show(); }
         else {
-          result = videoIds.map((id, i) => ({ id, title: titles[i] }));
+          result = videoIds.map((id, i) => ({ id, title: titles[i], guest: guests[i] }));
           dlg.close();
         }
       },
     },
     h('div.tagger-bar', backBtn, counter, nextBtn),
     h('div.tag-video-wrap', video, linkedPlay, soundBtn),
-    h('label.field.song-field', h('span.field-label', 'Song name'), input, datalist));
+    h('label.field.song-field', h('span.field-label', 'Song name'), input, datalist),
+    h('div.guest-field', guestBar, guestInput, guestList));
 
     backBtn.addEventListener('click', async () => {
       titles[index] = input.value.trim();
+      guests[index] = guestInput.value.trim();
       if (index > 0) { index--; show(); return; }
       if (await confirmDialog({ title: 'Discard these videos?', message: 'None of them will be added.', confirm: 'Discard', destructive: true })) dlg.close();
     });
@@ -74,6 +97,7 @@ export function tagVideos(videoIds) {
       backBtn.textContent = index === 0 ? 'Cancel' : 'Back';
       nextBtn.textContent = index === videoIds.length - 1 ? 'Done' : 'Next';
       input.value = titles[index];
+      showGuest();
       const id = videoIds[index];
       if (isLinked(id)) {
         video.pause();

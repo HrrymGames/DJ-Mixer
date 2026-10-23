@@ -1,6 +1,6 @@
 // Offline support: keeps the app itself saved on the phone so it opens without signal
 // (e.g. inside a venue). Bump VERSION whenever app files change so phones pick up the new version.
-const VERSION = 'stubs-v7';
+const VERSION = 'stubs-v8';
 // Artist photos and map tiles you've already seen, so they still show with no signal.
 // Kept across app updates.
 const MEDIA_CACHE = 'stubs-media';
@@ -16,7 +16,7 @@ const APP_FILES = [
   'vendor/world/countries-50m.json',
   'js/world.js',
   'js/main.js', 'js/backup.js', 'js/native.js', 'js/linked.js', 'js/nav.js', 'js/db.js', 'js/store.js', 'js/ui.js', 'js/lookup.js', 'js/ticket.js', 'js/sortable.js',
-  'js/views/map.js', 'js/views/tickets.js', 'js/views/wishlist.js', 'js/views/settings.js', 'js/views/detail.js',
+  'js/views/map.js', 'js/views/featured.js', 'js/songs.js', 'js/views/tickets.js', 'js/views/wishlist.js', 'js/views/settings.js', 'js/views/detail.js',
   'js/views/concertForm.js', 'js/views/videoTagger.js', 'js/views/videoViewer.js', 'js/views/photoViewer.js',
   'icons/icon-192.png', 'icons/apple-touch-icon.png', 'icons/favicon-32.png',
 ];

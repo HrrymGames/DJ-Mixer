@@ -78,7 +78,7 @@ img { display: block; }
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
   height: var(--tabbar-h);
   padding-bottom: var(--safe-bottom);
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   background: var(--tabbar);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   backdrop-filter: saturate(180%) blur(20px);
@@ -550,3 +550,89 @@ button.map-stats.has-missing { cursor: pointer; }
 .play-badge svg { width: 34px; height: 34px; margin-left: 4px; }
 .linked-play:active .play-badge { transform: translate(-50%, -50%) scale(0.92); }
 .song-main { -webkit-touch-callout: none; }
+
+/* ---- map pins: always a perfect circle, whatever shape the photo is ----
+   (Leaflet's own CSS forces marker images to width:auto, which cropped tall/wide photos oddly) */
+.leaflet-container .leaflet-marker-pane .pin-photo img {
+  position: absolute; inset: 0;
+  width: 100% !important; height: 100% !important;
+  max-width: none !important; max-height: none !important;
+  object-fit: cover; object-position: center 25%;
+  border-radius: 50%;
+}
+
+/* ---- special guests ---- */
+.guest-field { margin-top: 10px; }
+.guest-bar {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  min-height: 48px; padding: 0 14px; border-radius: 12px;
+  background: rgba(255, 255, 255, 0.16); color: rgba(255, 255, 255, 0.85);
+  font-size: 16px; font-weight: 600; text-align: left;
+}
+.guest-bar:active { background: rgba(255, 255, 255, 0.24); }
+.guest-plus { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.25); }
+.guest-plus svg { width: 14px; height: 14px; }
+.song-title { white-space: normal; overflow-wrap: anywhere; }
+.song-guest { font-weight: 500; color: var(--text-2); }
+
+/* ---- Featured: full-screen video feed ---- */
+#view-featured { background: #000; }
+.feed { position: absolute; inset: 0; overflow-y: auto; scroll-snap-type: y mandatory; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.feed::-webkit-scrollbar { display: none; }
+.feed-slide {
+  position: relative; height: 100%; width: 100%;
+  scroll-snap-align: start; scroll-snap-stop: always;
+  overflow: hidden; background: #000;
+}
+.feed-video, .feed-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.feed-slide.landscape .feed-video, .feed-slide.landscape .feed-poster { object-fit: contain; }
+.feed-poster { filter: blur(0); }
+.feed-video::-webkit-media-controls { display: none !important; }
+.feed-video::-webkit-media-controls-start-playback-button { display: none !important; -webkit-appearance: none; }
+.feed-spinner {
+  position: absolute; left: 50%; top: 50%; width: 38px; height: 38px; margin: -19px 0 0 -19px;
+  border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.25); border-top-color: #fff;
+  animation: feed-spin 0.9s linear infinite; opacity: 0; transition: opacity 0.2s; pointer-events: none;
+}
+.feed-slide.loading .feed-spinner { opacity: 1; }
+@keyframes feed-spin { to { transform: rotate(360deg); } }
+.feed-note { position: absolute; left: 24px; right: 24px; top: 45%; text-align: center; color: #fff; font-size: 15px; background: rgba(0, 0, 0, 0.55); padding: 12px 14px; border-radius: 12px; }
+.feed-mute { position: absolute; right: 16px; top: calc(var(--safe-top) + 16px); width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: rgba(0, 0, 0, 0.5); color: #fff; }
+.feed-mute svg { width: 22px; height: 22px; }
+
+.feed-controls {
+  position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.65) 0%, rgba(0, 0, 0, 0.15) 40%, rgba(0, 0, 0, 0.15) 70%, rgba(0, 0, 0, 0.35) 100%);
+  opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
+}
+.feed-slide.show-controls .feed-controls { opacity: 1; }
+.feed-slide.show-controls .feed-controls .feed-btn { pointer-events: auto; }
+.feed-row { display: flex; align-items: center; justify-content: center; gap: 34px; }
+.feed-btn { width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: rgba(0, 0, 0, 0.35); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.feed-btn svg { width: 30px; height: 30px; }
+.feed-btn span { display: grid; place-items: center; }
+.feed-btn-main { width: 72px; height: 72px; }
+.feed-btn-main svg { width: 38px; height: 38px; }
+.feed-caption {
+  position: absolute; left: 18px; right: 18px; bottom: calc(var(--tabbar-h) + 22px);
+  color: #fff; display: flex; flex-direction: column; gap: 3px; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+}
+.feed-caption strong { font-size: 18px; font-weight: 800; }
+.feed-caption span { font-size: 15px; font-weight: 600; opacity: 0.95; }
+.feed-caption small { font-size: 13px; opacity: 0.8; }
+
+.feed-end { display: grid; place-items: center; text-align: center; color: #fff; padding: 0 32px var(--tabbar-h); background: radial-gradient(circle at 50% 40%, #26262c 0%, #000 70%); }
+.feed-end h2 { margin: 6px 0 8px; font-size: 26px; font-weight: 850; }
+.feed-end p { margin: 0; color: rgba(255, 255, 255, 0.7); font-size: 16px; }
+.feed-end .feed-end-emoji { font-size: 54px; margin: 0; color: #fff; }
+
+.feed-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 36px var(--tabbar-h); color: #fff; }
+.feed-empty-icon { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.12); margin-bottom: 14px; }
+.feed-empty-icon svg { width: 30px; height: 30px; margin-left: 4px; }
+.feed-empty h2 { margin: 0 0 6px; font-size: 22px; }
+.feed-empty p { margin: 0; color: rgba(255, 255, 255, 0.7); }
+
+/* Tab bar sits over the videos while Featured is open */
+body.feed-mode #tabbar { background: rgba(0, 0, 0, 0.35); border-top-color: rgba(255, 255, 255, 0.08); }
+body.feed-mode .tab { color: rgba(255, 255, 255, 0.7); }
+body.feed-mode .tab.active { color: #fff; }

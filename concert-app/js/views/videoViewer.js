@@ -3,6 +3,7 @@ import { getItem, saveItem, mediaURL, deleteMedia } from '../store.js';
 import { isLinked } from '../native.js';
 import { playLinked } from '../linked.js';
 import { autoplay } from './videoTagger.js';
+import { songLabelIn } from '../songs.js';
 
 /**
  * Tapping a song in the setlist. In the iPhone app, songs whose videos are linked from the
@@ -26,12 +27,14 @@ export async function songActions(concertId, songId) {
       { label: many ? 'Watch videos' : 'Watch video', value: 'play' },
       many && song.videoIds.some(isLinked) && { label: 'Pick one of the videos', value: 'list' },
       { label: 'Rename song', value: 'rename' },
+      { label: song.guest ? 'Change special guest' : 'Add special guest', value: 'guest' },
       { label: 'Remove from setlist', value: 'remove', destructive: true },
     ].filter(Boolean),
   });
   if (choice === 'play') openSong(concertId, songId);
   else if (choice === 'list') openSongVideos(concertId, songId);
   else if (choice === 'rename') await renameSong(concertId, songId);
+  else if (choice === 'guest') await editGuest(concertId, songId);
   else if (choice === 'remove') await removeSong(concertId, songId);
 }
 
@@ -46,10 +49,20 @@ export async function renameSong(concertId, songId) {
   if (name == null) return null;
   const twin = name && fresh.setlist.find((x) => x.id !== songId && songKey(x.title) === songKey(name));
   const setlist = twin
-    ? fresh.setlist.filter((x) => x.id !== songId).map((x) => (x === twin ? { ...x, videoIds: [...x.videoIds, ...s.videoIds] } : x))
+    ? fresh.setlist.filter((x) => x.id !== songId).map((x) => (x === twin ? { ...x, guest: x.guest || s.guest || '', videoIds: [...x.videoIds, ...s.videoIds] } : x))
     : fresh.setlist.map((x) => (x.id === songId ? { ...x, title: name } : x));
   await saveItem({ ...fresh, setlist });
   return { name, merged: !!twin };
+}
+
+/** Add, change or (by clearing the box) remove a song's special guest. */
+async function editGuest(concertId, songId) {
+  const fresh = getItem(concertId);
+  const s = fresh?.setlist.find((x) => x.id === songId);
+  if (!s) return;
+  const name = await promptDialog({ title: 'Special guest', value: s.guest || '', placeholder: 'e.g. Playboi Carti', confirm: 'Save' });
+  if (name == null) return;
+  await saveItem({ ...fresh, setlist: fresh.setlist.map((x) => (x.id === songId ? { ...x, guest: name.trim() } : x)) });
 }
 
 async function removeSong(concertId, songId) {
@@ -75,7 +88,7 @@ export function openSongVideos(concertId, songId) {
   const song = c?.setlist.find((s) => s.id === songId);
   if (!song) return;
 
-  const title = h('h3.viewer-title', song.title || 'Untitled');
+  const title = h('h3.viewer-title', songLabelIn(c.setlist, songId));
   const counter = h('span.viewer-counter', song.videoIds.length > 1 ? `1 of ${song.videoIds.length}` : '');
   const soundBtn = h('button.sound-btn', { type: 'button', hidden: true, 'aria-label': 'Turn sound on' });
   soundBtn.innerHTML = ICONS.mute + '<span>Tap for sound</span>';
@@ -145,7 +158,7 @@ export function openSongVideos(concertId, songId) {
     if (choice === 'rename') {
       const res = await renameSong(concertId, songId);
       if (!res) return;
-      if (res.merged) dlg.close(); else title.textContent = res.name || 'Untitled';
+      if (res.merged) dlg.close(); else title.textContent = songLabelIn(getItem(concertId).setlist, songId);
     } else if (choice === 'delete') {
       const fresh = getItem(concertId);
       const s = fresh?.setlist.find((x) => x.id === songId);

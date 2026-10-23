@@ -3,11 +3,12 @@ import { resolveVenue, findVenueCapacity, findArtistImage, findTour } from './lo
 import * as mapView from './views/map.js';
 import * as ticketsView from './views/tickets.js';
 import * as wishlistView from './views/wishlist.js';
+import * as featuredView from './views/featured.js';
 import * as settingsView from './views/settings.js';
 import * as detailView from './views/detail.js';
 import { nav } from './nav.js';
 
-const TABS = { map: mapView, tickets: ticketsView, wishlist: wishlistView, settings: settingsView };
+const TABS = { map: mapView, tickets: ticketsView, featured: featuredView, wishlist: wishlistView, settings: settingsView };
 const viewEl = (tab) => document.getElementById(`view-${tab}`);
 const detailEl = document.getElementById('view-detail');
 
@@ -31,6 +32,7 @@ function showTab(tab, { push = true } = {}) {
   if (!TABS[tab]) tab = 'tickets';
   closeDetail({ push: false });
   if (currentTab !== tab) {
+    if (currentTab) TABS[currentTab].hide?.();
     Object.keys(TABS).forEach((t) => { viewEl(t).hidden = t !== tab; });
     currentTab = tab;
     TABS[tab].show?.();
@@ -41,6 +43,7 @@ function showTab(tab, { push = true } = {}) {
 
 function openConcert(id, { push = true } = {}) {
   detailFromTab = currentTab || 'tickets';
+  if (currentTab && !detailId) TABS[currentTab].hide?.();
   detailId = id;
   Object.keys(TABS).forEach((t) => { viewEl(t).hidden = true; });
   detailEl.hidden = false;

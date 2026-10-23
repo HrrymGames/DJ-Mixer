@@ -20,6 +20,7 @@ class SetlisticViewController: CAPBridgeViewController {
 ///   pick({type, thumbSize})    -> {items: [{id, type, duration, created, width, height, thumb}], missing}
 ///   image({id, maxSize})       -> {data}   (base64 JPEG)
 ///   play({ids})                -> resolves when the player is closed
+///   videoFile({id})            -> {path}  file to play inside the app (Featured feed)
 @objc(PhotoLinkPlugin)
 public class PhotoLinkPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControllerDelegate {
     public let identifier = "PhotoLinkPlugin"
@@ -29,10 +30,14 @@ public class PhotoLinkPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControlle
         CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "pick", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "image", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "play", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "play", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "videoFile", returnType: CAPPluginReturnPromise)
     ]
 
     private var pickCall: CAPPluginCall?
+    /// Keeps Photos' video files open (and readable) while the feed is playing them.
+    private var openAssets = [String: AVURLAsset]()
+    private let assetLock = NSLock()
     private var pickThumbSize: CGFloat = 480
 
     // MARK: - Photo library permission
@@ -231,6 +236,87 @@ public class PhotoLinkPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControlle
         }
         group.notify(queue: .main) {
             done(items.compactMap { $0 })
+        }
+    }
+}
+
+// MARK: - Playing camera-roll videos inside the web view (Featured feed)
+
+extension PhotoLinkPlugin {
+    /// Temporary copies live here (only used when Photos' own file can't be read directly).
+    private static let feedDir: URL = {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("feed", isDirectory: true)
+        try? FileManager.default.removeItem(at: dir)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
+    private func newTempFile(ext: String) -> URL {
+        let dir = PhotoLinkPlugin.feedDir
+        // Keep only the newest few temporary copies.
+        if let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.creationDateKey]) {
+            let sorted = files.sorted {
+                let a = (try? $0.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+                let b = (try? $1.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+                return a > b
+            }
+            for old in sorted.dropFirst(4) { try? FileManager.default.removeItem(at: old) }
+        }
+        return dir.appendingPathComponent(UUID().uuidString).appendingPathExtension(ext.isEmpty ? "mov" : ext.lowercased())
+    }
+
+    @objc func videoFile(_ call: CAPPluginCall) {
+        guard let id = call.getString("id") else {
+            call.reject("Missing video")
+            return
+        }
+        let fetched = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil)
+        guard let asset = fetched.firstObject, asset.mediaType == .video else {
+            call.reject("This video isn't in your camera roll any more", "MISSING")
+            return
+        }
+        let options = PHVideoRequestOptions()
+        options.isNetworkAccessAllowed = true
+        options.deliveryMode = .highQualityFormat
+        options.version = .current
+
+        PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, _ in
+            // Normal videos: play Photos' own file directly – no copy.
+            if let urlAsset = avAsset as? AVURLAsset {
+                let url = urlAsset.url
+                self.assetLock.lock()
+                self.openAssets[id] = urlAsset
+                if self.openAssets.count > 12 { self.openAssets.removeValue(forKey: self.openAssets.keys.first!) }
+                self.assetLock.unlock()
+                if FileManager.default.isReadableFile(atPath: url.path) {
+                    call.resolve(["path": url.path])
+                    return
+                }
+                let dest = self.newTempFile(ext: url.pathExtension)
+                do {
+                    try FileManager.default.copyItem(at: url, to: dest)
+                    call.resolve(["path": dest.path])
+                } catch {
+                    call.reject("Couldn't open this video")
+                }
+                return
+            }
+            // Slow-motion or edited videos: make a playable temporary copy.
+            guard let avAsset = avAsset,
+                  let export = AVAssetExportSession(asset: avAsset, presetName: AVAssetExportPresetHighestQuality) else {
+                call.reject("Couldn't open this video")
+                return
+            }
+            let dest = self.newTempFile(ext: "mp4")
+            export.outputURL = dest
+            export.outputFileType = .mp4
+            export.exportAsynchronously {
+                if export.status == .completed {
+                    call.resolve(["path": dest.path])
+                } else {
+                    call.reject("Couldn't open this video")
+                }
+            }
         }
     }
 }
