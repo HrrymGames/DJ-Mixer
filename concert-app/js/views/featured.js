@@ -216,6 +216,7 @@ async function loadSlide(slide) {
     slide._video.src = src;
     if (slides[activeIndex] === slide) startPlaying(slide);
   } catch (e) {
+    slide._failed = true;
     slide.classList.remove('loading');
     slide._note.textContent = e?.message || 'This video couldn\'t be loaded.';
     slide._note.hidden = false;
@@ -254,11 +255,29 @@ function setActive(index) {
     s._video.pause();
     s._userPaused = false;
     s.classList.remove('show-controls');
-    if (Math.abs(i - index) > 2) unloadSlide(s);
+    if (i < index - 1 || i > index + 2) unloadSlide(s);
   });
-  // Load this one and its neighbours so swiping is instant.
-  for (const i of [index, index + 1, index - 1, index + 2]) loadSlide(slides[i]);
   playActive();
+  loadNext();
+}
+
+// Load one video at a time: the one on screen first, then the next two, so the video
+// you're watching never waits behind the others.
+let loadingNext = false;
+async function loadNext() {
+  if (loadingNext) return;
+  loadingNext = true;
+  try {
+    for (;;) {
+      const slide = [activeIndex, activeIndex + 1, activeIndex + 2]
+        .map((i) => slides[i])
+        .find((s) => s && !s._video.src && !s._failed);
+      if (!slide) break;
+      await loadSlide(slide);
+    }
+  } finally {
+    loadingNext = false;
+  }
 }
 
 function playActive() {

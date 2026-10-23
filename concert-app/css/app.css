@@ -643,4 +643,5 @@ body.feed-mode .tab.active { color: #fff; }
 .busy-fill { height: 100%; width: 0; border-radius: 99px; background: var(--accent); transition: width 0.3s ease; }
 .busy-bar.indeterminate .busy-fill { position: absolute; width: 35%; animation: busy-slide 1.1s ease-in-out infinite; }
 @keyframes busy-slide { from { left: -35%; } to { left: 100%; } }
+.busy-cancel { width: 100%; padding: 10px; border: 0; border-radius: 10px; background: var(--hair); color: var(--text); font: inherit; font-weight: 600; }
 .busy-count { font-weight: 700; color: var(--text) !important; margin-bottom: 6px !important; font-variant-numeric: tabular-nums; }

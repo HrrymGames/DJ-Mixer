@@ -104,16 +104,29 @@ public class PhotoLinkPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControlle
         let group = DispatchGroup()
         var finishedCount = 0
         let total = assets.count
+        // How far each preview has got (0...1), including downloading from iCloud.
+        var fractions = [Double](repeating: 0, count: ids.count)
+        var lastSent = -1.0
         // Progress for the "Getting your videos ready" bar in the app.
-        let report = { (done: Int) in
-            self.bridge?.triggerWindowJSEvent(eventName: "photolinkprogress", data: "{\"done\":\(done),\"total\":\(total)}")
+        let report = { (force: Bool) in
+            let overall = total == 0 ? 1 : min(1, fractions.reduce(0, +) / Double(total))
+            if !force && overall - lastSent < 0.01 { return }
+            lastSent = overall
+            self.bridge?.triggerWindowJSEvent(
+                eventName: "photolinkprogress",
+                data: "{\"done\":\(finishedCount),\"total\":\(total),\"progress\":\(overall)}")
         }
-        report(0)
+        report(true)
 
         for (index, id) in ids.enumerated() {
             guard let asset = assets[id] else { continue }
             group.enter()
-            thumbnail(asset, size: size) { data in
+            thumbnail(asset, size: size, progress: { value in
+                DispatchQueue.main.async {
+                    fractions[index] = max(fractions[index], min(value, 0.99))
+                    report(false)
+                }
+            }) { data in
                 DispatchQueue.main.async {
                     items[index] = [
                         "id": id,
@@ -124,8 +137,9 @@ public class PhotoLinkPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControlle
                         "height": asset.pixelHeight,
                         "thumb": data?.base64EncodedString() ?? ""
                     ]
+                    fractions[index] = 1
                     finishedCount += 1
-                    report(finishedCount)
+                    report(true)
                     group.leave()
                 }
             }
@@ -152,48 +166,18 @@ public class PhotoLinkPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControlle
         return map
     }
 
-    /// A preview picture for a photo or video.
-    /// Old videos are often only in iCloud, and a sharp preview can make Photos download the whole
-    /// video first. So wait a few seconds at most, then use the quick preview already on the phone.
-    private func thumbnail(_ asset: PHAsset, size: CGFloat, done: @escaping (Data?) -> Void) {
-        let lock = NSLock()
-        var finished = false
-        let finish: (UIImage?) -> Void = { image in
-            lock.lock()
-            if finished { lock.unlock(); return }
-            finished = true
-            lock.unlock()
-            done(image?.jpegData(compressionQuality: 0.8))
-        }
-        let target = CGSize(width: size, height: size)
-
+    /// A full-quality preview picture for a photo or video. Videos only stored in iCloud are
+    /// downloaded for it, and `progress` reports how far that download has got.
+    private func thumbnail(_ asset: PHAsset, size: CGFloat, progress: @escaping (Double) -> Void, done: @escaping (Data?) -> Void) {
         let options = PHImageRequestOptions()
         options.deliveryMode = .highQualityFormat
         options.resizeMode = .fast
         options.isNetworkAccessAllowed = true
-        let requestID = PHImageManager.default().requestImage(
-            for: asset, targetSize: target, contentMode: .aspectFill, options: options
+        options.progressHandler = { value, _, _, _ in progress(value) }
+        PHImageManager.default().requestImage(
+            for: asset, targetSize: CGSize(width: size, height: size), contentMode: .aspectFill, options: options
         ) { image, _ in
-            if let image = image { finish(image) }
-        }
-
-        DispatchQueue.global().asyncAfter(deadline: .now() + 4) {
-            lock.lock()
-            let isDone = finished
-            lock.unlock()
-            if isDone { return }
-            PHImageManager.default().cancelImageRequest(requestID)
-            let quick = PHImageRequestOptions()
-            quick.deliveryMode = .fastFormat
-            quick.resizeMode = .fast
-            quick.isNetworkAccessAllowed = false
-            PHImageManager.default().requestImage(
-                for: asset, targetSize: target, contentMode: .aspectFill, options: quick
-            ) { image, _ in
-                if let image = image { finish(image) }
-            }
-            // If even that doesn't come back, carry on without a preview.
-            DispatchQueue.global().asyncAfter(deadline: .now() + 3) { finish(nil) }
+            done(image?.jpegData(compressionQuality: 0.8))
         }
     }
 
