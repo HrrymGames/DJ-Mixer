@@ -180,7 +180,8 @@ export async function addMedia(files) {
 export async function addLinked(items) {
   const records = items.map((it) => ({
     id: `${LINK_PREFIX}${uid()}:${it.id}`,
-    blob: base64ToBlob(it.thumb),
+    // No preview could be made (e.g. iCloud was slow): use a simple stand-in picture.
+    blob: it.thumb ? base64ToBlob(it.thumb) : placeholderPreview(it.type),
     type: 'image/jpeg',
     name: '',
     createdAt: Date.now(),
@@ -189,6 +190,14 @@ export async function addLinked(items) {
   await db.putMany('media', records);
   records.forEach((r) => urlCache.set(r.id, URL.createObjectURL(r.blob)));
   return records.map((r) => r.id);
+}
+
+function placeholderPreview(type) {
+  const icon = type === 'video'
+    ? '<path d="M84 70v60l52-30z" fill="#fff" opacity=".85"/>'
+    : '<rect x="62" y="70" width="76" height="60" rx="8" fill="none" stroke="#fff" stroke-width="7" opacity=".85"/>';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="#2a2a30"/>${icon}</svg>`;
+  return new Blob([svg], { type: 'image/svg+xml' });
 }
 
 export async function mediaURL(id) {

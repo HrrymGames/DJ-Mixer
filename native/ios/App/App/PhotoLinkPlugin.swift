@@ -102,6 +102,13 @@ public class PhotoLinkPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControlle
         let size = pickThumbSize
         var items = [[String: Any]?](repeating: nil, count: ids.count)
         let group = DispatchGroup()
+        var finishedCount = 0
+        let total = assets.count
+        // Progress for the "Getting your videos ready" bar in the app.
+        let report = { (done: Int) in
+            self.bridge?.triggerWindowJSEvent(eventName: "photolinkprogress", data: "{\"done\":\(done),\"total\":\(total)}")
+        }
+        report(0)
 
         for (index, id) in ids.enumerated() {
             guard let asset = assets[id] else { continue }
@@ -117,6 +124,8 @@ public class PhotoLinkPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControlle
                         "height": asset.pixelHeight,
                         "thumb": data?.base64EncodedString() ?? ""
                     ]
+                    finishedCount += 1
+                    report(finishedCount)
                     group.leave()
                 }
             }
@@ -143,18 +152,48 @@ public class PhotoLinkPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControlle
         return map
     }
 
+    /// A preview picture for a photo or video.
+    /// Old videos are often only in iCloud, and a sharp preview can make Photos download the whole
+    /// video first. So wait a few seconds at most, then use the quick preview already on the phone.
     private func thumbnail(_ asset: PHAsset, size: CGFloat, done: @escaping (Data?) -> Void) {
+        let lock = NSLock()
+        var finished = false
+        let finish: (UIImage?) -> Void = { image in
+            lock.lock()
+            if finished { lock.unlock(); return }
+            finished = true
+            lock.unlock()
+            done(image?.jpegData(compressionQuality: 0.8))
+        }
+        let target = CGSize(width: size, height: size)
+
         let options = PHImageRequestOptions()
         options.deliveryMode = .highQualityFormat
-        options.resizeMode = .exact
+        options.resizeMode = .fast
         options.isNetworkAccessAllowed = true
-        PHImageManager.default().requestImage(
-            for: asset,
-            targetSize: CGSize(width: size, height: size),
-            contentMode: .aspectFill,
-            options: options
+        let requestID = PHImageManager.default().requestImage(
+            for: asset, targetSize: target, contentMode: .aspectFill, options: options
         ) { image, _ in
-            done(image?.jpegData(compressionQuality: 0.8))
+            if let image = image { finish(image) }
+        }
+
+        DispatchQueue.global().asyncAfter(deadline: .now() + 4) {
+            lock.lock()
+            let isDone = finished
+            lock.unlock()
+            if isDone { return }
+            PHImageManager.default().cancelImageRequest(requestID)
+            let quick = PHImageRequestOptions()
+            quick.deliveryMode = .fastFormat
+            quick.resizeMode = .fast
+            quick.isNetworkAccessAllowed = false
+            PHImageManager.default().requestImage(
+                for: asset, targetSize: target, contentMode: .aspectFill, options: quick
+            ) { image, _ in
+                if let image = image { finish(image) }
+            }
+            // If even that doesn't come back, carry on without a preview.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 3) { finish(nil) }
         }
     }
 

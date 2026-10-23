@@ -636,3 +636,11 @@ button.map-stats.has-missing { cursor: pointer; }
 body.feed-mode #tabbar { background: rgba(0, 0, 0, 0.35); border-top-color: rgba(255, 255, 255, 0.08); }
 body.feed-mode .tab { color: rgba(255, 255, 255, 0.7); }
 body.feed-mode .tab.active { color: #fff; }
+
+/* "Getting your videos ready…" with a progress bar */
+.busy-dialog { padding-bottom: 18px; }
+.busy-bar { position: relative; height: 8px; margin: 14px 4px 8px; border-radius: 99px; background: var(--hair); overflow: hidden; }
+.busy-fill { height: 100%; width: 0; border-radius: 99px; background: var(--accent); transition: width 0.3s ease; }
+.busy-bar.indeterminate .busy-fill { position: absolute; width: 35%; animation: busy-slide 1.1s ease-in-out infinite; }
+@keyframes busy-slide { from { left: -35%; } to { left: 100%; } }
+.busy-count { font-weight: 700; color: var(--text) !important; margin-bottom: 6px !important; font-variant-numeric: tabular-nums; }

@@ -1,6 +1,6 @@
 // iPhone app: camera-roll links instead of copies (videos and photos stay in Photos).
 import { photoLink, isLinked, linkTarget } from './native.js';
-import { confirmDialog, toast } from './ui.js';
+import { confirmDialog, toast, overlay, h } from './ui.js';
 import { addLinked } from './store.js';
 
 async function ensureAccess() {
@@ -21,12 +21,34 @@ async function ensureAccess() {
 /** Opens the photo picker. Returns media ids for the picked items (links + small previews). */
 export async function pickLinked(type) {
   if (!await ensureAccess()) return [];
+  // Sits behind the photo picker, so it shows as soon as you tap the tick.
+  // (Older videos stored in iCloud can take a few seconds to get previews for.)
+  const what = type === 'video' ? 'videos' : 'photos';
+  const fill = h('div.busy-fill');
+  const count = h('p.busy-count', 'Starting…');
+  const bar = h('div.busy-bar.indeterminate', fill);
+  const busy = overlay(h('div.dialog.busy-dialog',
+    h('h3', `Getting your ${what} ready…`),
+    bar,
+    count,
+    h('p', 'Older ones stored in iCloud can take a few seconds each.')), { variant: 'dialog', dismissable: false });
+  // Progress messages from the iPhone app as each preview is made.
+  const onProgress = (e) => {
+    if (!e.total) return;
+    bar.classList.remove('indeterminate');
+    fill.style.width = `${Math.round((e.done / e.total) * 100)}%`;
+    count.textContent = `${e.done} of ${e.total}`;
+  };
+  window.addEventListener('photolinkprogress', onProgress);
   let res;
   try {
     res = await photoLink.pick(type);
   } catch (e) {
     toast(e.message || 'Couldn\'t open your photos');
     return [];
+  } finally {
+    window.removeEventListener('photolinkprogress', onProgress);
+    busy.close();
   }
   if (res.missing) toast(`${res.missing} item${res.missing === 1 ? '' : 's'} couldn't be linked`);
   return res.items?.length ? addLinked(res.items) : [];

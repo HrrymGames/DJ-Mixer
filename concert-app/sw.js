@@ -1,6 +1,6 @@
 // Offline support: keeps the app itself saved on the phone so it opens without signal
 // (e.g. inside a venue). Bump VERSION whenever app files change so phones pick up the new version.
-const VERSION = 'stubs-v8';
+const VERSION = 'stubs-v9';
 // Artist photos and map tiles you've already seen, so they still show with no signal.
 // Kept across app updates.
 const MEDIA_CACHE = 'stubs-media';
