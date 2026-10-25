@@ -19,8 +19,12 @@ class SetlisticViewController: CAPBridgeViewController {
 ///   openSettings()
 ///   pick({type, thumbSize})    -> {items: [{id, type, duration, created, width, height, thumb}], missing}
 ///   image({id, maxSize})       -> {data}   (base64 JPEG)
-///   play({ids})                -> resolves when the player is closed
+///   play({ids})                -> resolves when the player is closed (or {cancelled} after cancelPlay)
+///   cancelPlay()               -> stops a play() that is still downloading
 ///   videoFile({id})            -> {path}  file to play inside the app (Featured feed)
+///
+/// Events: "photolinkvideoprogress" {id, progress} while a video downloads from iCloud,
+///         "photolinkplayerstart" when the full-screen player appears.
 @objc(PhotoLinkPlugin)
 public class PhotoLinkPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControllerDelegate {
     public let identifier = "PhotoLinkPlugin"
@@ -31,6 +35,7 @@ public class PhotoLinkPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControlle
         CAPPluginMethod(name: "pick", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "image", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "play", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "cancelPlay", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "videoFile", returnType: CAPPluginReturnPromise)
     ]
 
@@ -39,6 +44,9 @@ public class PhotoLinkPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControlle
     private var openAssets = [String: AVURLAsset]()
     private let assetLock = NSLock()
     private var pickThumbSize: CGFloat = 480
+    /// The play() call that is waiting for its videos to download (main thread only).
+    private var playCall: CAPPluginCall?
+    private var playRequest: PHImageRequestID?
 
     // MARK: - Photo library permission
 
@@ -223,43 +231,90 @@ public class PhotoLinkPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControlle
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
 
-        playerItems(for: videos) { items in
-            guard !items.isEmpty else {
-                call.reject("Couldn't load this video")
-                return
+        DispatchQueue.main.async {
+            self.playCall?.resolve(["cancelled": true])
+            self.playCall = call
+            let player = AVQueuePlayer()
+            var presented = false
+            let finish = { (result: [String: Any]) in
+                guard self.playCall === call else { return }
+                self.playCall = nil
+                if let request = self.playRequest { PHImageManager.default().cancelImageRequest(request) }
+                self.playRequest = nil
+                call.resolve(result)
             }
-            let player = AVQueuePlayer(items: items)
-            let controller = ClosingPlayerViewController()
-            controller.player = player
-            controller.onClose = {
-                player.pause()
-                call.resolve(["missing": ids.count - videos.count])
+
+            // Streaming from iCloud stops and starts, so each video is downloaded in full before it
+            // plays. The first one plays as soon as it's ready; the rest join the queue in order.
+            func load(_ index: Int) {
+                guard index < videos.count, self.playCall === call else { return }
+                let asset = videos[index]
+                self.playRequest = self.downloadVideo(asset, progress: { value in
+                    if !presented { self.reportVideoProgress(asset.localIdentifier, value) }
+                }) { avAsset, audioMix in
+                    DispatchQueue.main.async {
+                        guard self.playCall === call else { return }
+                        if let avAsset = avAsset {
+                            let item = AVPlayerItem(asset: avAsset)
+                            item.audioMix = audioMix
+                            let wasFinished = player.currentItem == nil
+                            player.insert(item, after: nil)
+                            if presented && wasFinished { player.play() }
+                        }
+                        if !presented && player.currentItem != nil {
+                            presented = true
+                            let controller = ClosingPlayerViewController()
+                            controller.player = player
+                            controller.onClose = {
+                                player.pause()
+                                finish(["missing": ids.count - videos.count])
+                            }
+                            self.bridge?.triggerWindowJSEvent(eventName: "photolinkplayerstart")
+                            self.bridge?.viewController?.present(controller, animated: true) {
+                                player.play()
+                            }
+                        } else if !presented && index == videos.count - 1 {
+                            self.playCall = nil
+                            call.reject("Couldn't load this video")
+                            return
+                        }
+                        load(index + 1)
+                    }
+                }
             }
-            self.bridge?.viewController?.present(controller, animated: true) {
-                player.play()
-            }
+            load(0)
         }
     }
 
-    /// Player items in the same order as the videos. Videos stored in iCloud stream from there.
-    private func playerItems(for assets: [PHAsset], done: @escaping ([AVPlayerItem]) -> Void) {
-        var items = [AVPlayerItem?](repeating: nil, count: assets.count)
-        let group = DispatchGroup()
-        for (index, asset) in assets.enumerated() {
-            group.enter()
-            let options = PHVideoRequestOptions()
-            options.isNetworkAccessAllowed = true
-            options.deliveryMode = .automatic
-            PHImageManager.default().requestPlayerItem(forVideo: asset, options: options) { item, _ in
-                DispatchQueue.main.async {
-                    items[index] = item
-                    group.leave()
-                }
-            }
+    @objc func cancelPlay(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            if let request = self.playRequest { PHImageManager.default().cancelImageRequest(request) }
+            self.playRequest = nil
+            self.playCall?.resolve(["cancelled": true])
+            self.playCall = nil
+            call.resolve()
         }
-        group.notify(queue: .main) {
-            done(items.compactMap { $0 })
+    }
+
+    /// The whole video, downloaded from iCloud first if it isn't on the phone.
+    @discardableResult
+    private func downloadVideo(_ asset: PHAsset, progress: @escaping (Double) -> Void,
+                               done: @escaping (AVAsset?, AVAudioMix?) -> Void) -> PHImageRequestID {
+        let options = PHVideoRequestOptions()
+        options.isNetworkAccessAllowed = true
+        options.deliveryMode = .highQualityFormat
+        options.version = .current
+        options.progressHandler = { value, _, _, _ in progress(value) }
+        return PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, audioMix, _ in
+            done(avAsset, audioMix)
         }
+    }
+
+    /// Tells the app how far a video has downloaded (for the ring over its first frame).
+    private func reportVideoProgress(_ id: String, _ value: Double) {
+        let escaped = id.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        bridge?.triggerWindowJSEvent(eventName: "photolinkvideoprogress",
+                                     data: "{\"id\":\"\(escaped)\",\"progress\":\(min(max(value, 0), 1))}")
     }
 }
 
@@ -298,12 +353,7 @@ extension PhotoLinkPlugin {
             call.reject("This video isn't in your camera roll any more", "MISSING")
             return
         }
-        let options = PHVideoRequestOptions()
-        options.isNetworkAccessAllowed = true
-        options.deliveryMode = .highQualityFormat
-        options.version = .current
-
-        PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, _ in
+        downloadVideo(asset, progress: { value in self.reportVideoProgress(id, value) }) { avAsset, _ in
             // Normal videos: play Photos' own file directly – no copy.
             if let urlAsset = avAsset as? AVURLAsset {
                 let url = urlAsset.url

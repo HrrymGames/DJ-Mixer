@@ -112,6 +112,25 @@ export function overlay(content, { variant = 'sheet', onClose, dismissable = tru
   return { el: panel, backdrop, close };
 }
 
+/** A ring that fills up as something downloads. set(0…1). */
+export function progressRing() {
+  const R = 22;
+  const LEN = 2 * Math.PI * R;
+  const el = h('div.progress-ring', {
+    html: `<svg viewBox="0 0 52 52"><circle class="ring-track" cx="26" cy="26" r="${R}"/><circle class="ring-fill" cx="26" cy="26" r="${R}" stroke-dasharray="${LEN}" stroke-dashoffset="${LEN}"/></svg>`,
+  });
+  const fill = el.querySelector('.ring-fill');
+  let shown = 0;
+  return {
+    el,
+    set(p) {
+      shown = Math.max(shown, Math.min(1, Math.max(0, p)));
+      fill.setAttribute('stroke-dashoffset', String(LEN * (1 - shown)));
+    },
+    reset() { shown = 0; fill.setAttribute('stroke-dashoffset', String(LEN)); },
+  };
+}
+
 /** iOS style list of actions. Resolves with the chosen value or null. */
 export function actionSheet({ title, actions }) {
   return new Promise((resolve) => {

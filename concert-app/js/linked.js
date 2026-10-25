@@ -1,7 +1,7 @@
 // iPhone app: camera-roll links instead of copies (videos and photos stay in Photos).
 import { photoLink, isLinked, linkTarget } from './native.js';
-import { confirmDialog, toast, overlay, h } from './ui.js';
-import { addLinked } from './store.js';
+import { confirmDialog, toast, overlay, h, progressRing, ICONS } from './ui.js';
+import { addLinked, mediaURL } from './store.js';
 
 async function ensureAccess() {
   const { status } = await photoLink.access(true);
@@ -60,15 +60,44 @@ export async function pickLinked(type) {
   return res.items?.length ? addLinked(res.items) : [];
 }
 
-/** Plays camera-roll videos full screen. Resolves when the player is closed. */
+/**
+ * Plays camera-roll videos full screen. Resolves when the player is closed.
+ * Videos stored in iCloud download in full first (streaming them stops and starts), so until
+ * the player opens you see the video's first frame with a ring filling up as it downloads.
+ */
 export async function playLinked(mediaIds) {
-  const targets = mediaIds.filter(isLinked).map(linkTarget);
+  const linked = mediaIds.filter(isLinked);
+  const targets = linked.map(linkTarget);
   if (!targets.length) return;
+
+  const frame = h('img.dl-frame', { alt: '' });
+  mediaURL(linked[0]).then((u) => { if (u) frame.src = u; });
+  const ring = progressRing();
+  const closeBtn = h('button.round-btn.light.dl-close', {
+    type: 'button', 'aria-label': 'Cancel', html: ICONS.close, onclick: () => photoLink.cancelPlay().catch(() => {}),
+  });
+  const view = h('div.dl-screen', frame, ring.el, closeBtn);
+  const screen = overlay(view, { variant: 'full', dismissable: false });
+  // Videos already on the phone open straight away, so the ring only appears if it's taking a moment.
+  const ringTimer = setTimeout(() => view.classList.add('downloading'), 300);
+  const onProgress = (e) => {
+    if (!targets.includes(e.id)) return;
+    view.classList.add('downloading');
+    ring.set(e.progress);
+  };
+  const onStart = () => { ring.set(1); setTimeout(() => screen.close(), 450); };
+  window.addEventListener('photolinkvideoprogress', onProgress);
+  window.addEventListener('photolinkplayerstart', onStart);
   try {
     const res = await photoLink.play(targets);
     if (res?.missing) toast(`${res.missing} video${res.missing === 1 ? ' is' : 's are'} no longer in your camera roll`);
   } catch (e) {
     toast(e.message || 'Couldn\'t play this video');
+  } finally {
+    window.removeEventListener('photolinkvideoprogress', onProgress);
+    window.removeEventListener('photolinkplayerstart', onStart);
+    clearTimeout(ringTimer);
+    screen.close();
   }
 }
 

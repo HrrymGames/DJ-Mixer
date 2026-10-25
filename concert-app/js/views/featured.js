@@ -1,7 +1,7 @@
 // Featured: a TikTok-style feed of every video in your setlists, in a random order.
 // The order is shuffled once each time the app starts, so closing and reopening the app
 // gives a fresh feed that starts from the top.
-import { h, ICONS, formatDate } from '../ui.js';
+import { h, ICONS, formatDate, progressRing } from '../ui.js';
 import { concerts, getItem, mediaURL } from '../store.js';
 import { isNative, isLinked, linkTarget, photoLink, fileSrc } from '../native.js';
 import { guestNotes, songLabel } from '../songs.js';
@@ -74,6 +74,11 @@ export function refresh(change) {
     if (visible) render();
   }
 }
+
+// iPhone app: fill the ring on a video that's downloading from iCloud.
+window.addEventListener('photolinkvideoprogress', (e) => {
+  for (const s of slides) if (s._target === e.id) s._ring.set(e.progress);
+});
 
 // Pause when the app goes to the background.
 document.addEventListener('visibilitychange', () => {
@@ -150,9 +155,12 @@ function slideEl(item, index) {
   const muteBtn = h('button.feed-mute', { type: 'button', hidden: true, 'aria-label': 'Turn sound on', html: ICONS.mute });
   const note = h('p.feed-note', { hidden: true });
 
+  const ring = progressRing();
   const slide = h('section.feed-slide.loading', { 'data-index': index },
-    poster, video, h('div.feed-spinner'), note, muteBtn, controls);
+    poster, video, h('div.feed-spinner'), ring.el, note, muteBtn, controls);
   slide._item = item;
+  slide._ring = ring;
+  slide._target = isLinked(item.vid) ? linkTarget(item.vid) : null;
   slide._video = video;
 
   let hideTimer;
@@ -207,6 +215,9 @@ async function loadSlide(slide) {
     let src;
     if (isLinked(vid)) {
       if (!isNative) throw new Error('This video lives in your camera roll – open the Setlistic iPhone app to watch it.');
+      // Downloads in full first if it's in iCloud, so it plays smoothly (the ring shows how far it's got).
+      slide._ring.reset();
+      slide.classList.add('downloading');
       const { path } = await photoLink.videoFile(linkTarget(vid));
       src = fileSrc(path);
     } else {
@@ -222,6 +233,7 @@ async function loadSlide(slide) {
     slide._note.hidden = false;
   } finally {
     slide._loading = false;
+    slide.classList.remove('downloading');
   }
 }
 
