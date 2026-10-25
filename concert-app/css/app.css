@@ -661,6 +661,14 @@ body.feed-mode .tab.active { color: #fff; }
 .dl-screen .progress-ring { position: relative; opacity: 0; transition: opacity 0.25s; }
 .dl-screen.downloading .progress-ring { opacity: 1; }
 .dl-close { position: absolute; left: 16px; top: calc(var(--safe-top) + 12px); }
+.dl-anyway {
+  position: absolute; right: 16px; top: calc(var(--safe-top) + 12px); height: 36px; padding: 0 14px;
+  border: 0; border-radius: 99px; background: rgba(255, 255, 255, 0.16); color: rgba(255, 255, 255, 0.85);
+  font: inherit; font-size: 14px; font-weight: 600;
+  opacity: 0; pointer-events: none; transition: opacity 0.25s;
+}
+.dl-screen.downloading .dl-anyway { opacity: 1; pointer-events: auto; }
+.dl-screen.streaming .dl-anyway, .dl-screen.streaming .dl-close, .dl-screen.streaming .progress-ring { opacity: 0; pointer-events: none; }
 
 .feed-slide .progress-ring { position: absolute; left: 50%; top: 50%; margin: -32px 0 0 -32px; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
 .feed-slide.downloading .progress-ring { opacity: 1; }

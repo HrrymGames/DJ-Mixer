@@ -60,23 +60,46 @@ export async function pickLinked(type) {
   return res.items?.length ? addLinked(res.items) : [];
 }
 
+const tellMissing = (res) => {
+  if (res?.missing) toast(`${res.missing} video${res.missing === 1 ? ' is' : 's are'} no longer in your camera roll`);
+};
+
 /**
  * Plays camera-roll videos full screen. Resolves when the player is closed.
  * Videos stored in iCloud download in full first (streaming them stops and starts), so until
  * the player opens you see the video's first frame with a ring filling up as it downloads.
+ * "Watch anyway" (or stream: true, used on the song-title screen) streams straight away instead.
  */
-export async function playLinked(mediaIds) {
+export async function playLinked(mediaIds, { stream = false } = {}) {
   const linked = mediaIds.filter(isLinked);
   const targets = linked.map(linkTarget);
   if (!targets.length) return;
 
+  if (stream) {
+    try {
+      tellMissing(await photoLink.play(targets, { stream: true }));
+    } catch (e) {
+      toast(e.message || 'Couldn\'t play this video');
+    }
+    return;
+  }
+
   const frame = h('img.dl-frame', { alt: '' });
   mediaURL(linked[0]).then((u) => { if (u) frame.src = u; });
   const ring = progressRing();
+  let watchAnyway = false;
   const closeBtn = h('button.round-btn.light.dl-close', {
     type: 'button', 'aria-label': 'Cancel', html: ICONS.close, onclick: () => photoLink.cancelPlay().catch(() => {}),
   });
-  const view = h('div.dl-screen', frame, ring.el, closeBtn);
+  const anywayBtn = h('button.dl-anyway', {
+    type: 'button',
+    onclick: () => {
+      watchAnyway = true;
+      view.classList.add('streaming');
+      photoLink.cancelPlay().catch(() => {});
+    },
+  }, 'Watch anyway');
+  const view = h('div.dl-screen', frame, ring.el, closeBtn, anywayBtn);
   const screen = overlay(view, { variant: 'full', dismissable: false });
   // Videos already on the phone open straight away, so the ring only appears if it's taking a moment.
   const ringTimer = setTimeout(() => view.classList.add('downloading'), 300);
@@ -89,8 +112,10 @@ export async function playLinked(mediaIds) {
   window.addEventListener('photolinkvideoprogress', onProgress);
   window.addEventListener('photolinkplayerstart', onStart);
   try {
-    const res = await photoLink.play(targets);
-    if (res?.missing) toast(`${res.missing} video${res.missing === 1 ? ' is' : 's are'} no longer in your camera roll`);
+    let res = await photoLink.play(targets);
+    // "Watch anyway": stop downloading and stream it instead.
+    if (res?.cancelled && watchAnyway) res = await photoLink.play(targets, { stream: true });
+    tellMissing(res);
   } catch (e) {
     toast(e.message || 'Couldn\'t play this video');
   } finally {

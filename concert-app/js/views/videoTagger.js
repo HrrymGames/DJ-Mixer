@@ -34,7 +34,8 @@ export function tagVideos(videoIds) {
     let playedIndex = -1;
     async function playCurrentLinked() {
       playedIndex = index;
-      await playLinked([ids[index]]);
+      // Streams straight away: no waiting for downloads while you're naming songs.
+      await playLinked([ids[index]], { stream: true });
       input.focus();
     }
 

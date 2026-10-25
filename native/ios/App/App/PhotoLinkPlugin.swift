@@ -19,7 +19,8 @@ class SetlisticViewController: CAPBridgeViewController {
 ///   openSettings()
 ///   pick({type, thumbSize})    -> {items: [{id, type, duration, created, width, height, thumb}], missing}
 ///   image({id, maxSize})       -> {data}   (base64 JPEG)
-///   play({ids})                -> resolves when the player is closed (or {cancelled} after cancelPlay)
+///   play({ids, stream})        -> resolves when the player is closed (or {cancelled} after cancelPlay)
+///                                 stream: true streams from iCloud straight away instead of downloading first
 ///   cancelPlay()               -> stops a play() that is still downloading
 ///   videoFile({id})            -> {path}  file to play inside the app (Featured feed)
 ///
@@ -231,6 +232,11 @@ public class PhotoLinkPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControlle
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
 
+        if call.getBool("stream", false) {
+            streamVideos(videos, call: call, missing: ids.count - videos.count)
+            return
+        }
+
         DispatchQueue.main.async {
             self.playCall?.resolve(["cancelled": true])
             self.playCall = call
@@ -283,6 +289,42 @@ public class PhotoLinkPlugin: CAPPlugin, CAPBridgedPlugin, PHPickerViewControlle
                 }
             }
             load(0)
+        }
+    }
+
+    /// Plays straight away, streaming from iCloud as it goes (can stop and start on a slow connection).
+    private func streamVideos(_ videos: [PHAsset], call: CAPPluginCall, missing: Int) {
+        var items = [AVPlayerItem?](repeating: nil, count: videos.count)
+        let group = DispatchGroup()
+        for (index, asset) in videos.enumerated() {
+            group.enter()
+            let options = PHVideoRequestOptions()
+            options.isNetworkAccessAllowed = true
+            options.deliveryMode = .automatic
+            PHImageManager.default().requestPlayerItem(forVideo: asset, options: options) { item, _ in
+                DispatchQueue.main.async {
+                    items[index] = item
+                    group.leave()
+                }
+            }
+        }
+        group.notify(queue: .main) {
+            let ready = items.compactMap { $0 }
+            guard !ready.isEmpty else {
+                call.reject("Couldn't load this video")
+                return
+            }
+            let player = AVQueuePlayer(items: ready)
+            let controller = ClosingPlayerViewController()
+            controller.player = player
+            controller.onClose = {
+                player.pause()
+                call.resolve(["missing": missing])
+            }
+            self.bridge?.triggerWindowJSEvent(eventName: "photolinkplayerstart")
+            self.bridge?.viewController?.present(controller, animated: true) {
+                player.play()
+            }
         }
     }
 

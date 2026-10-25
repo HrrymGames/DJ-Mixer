@@ -12,7 +12,7 @@ export const photoLink = {
   openSettings: () => call('PhotoLink', 'openSettings'),
   pick: (type) => call('PhotoLink', 'pick', { type, thumbSize: type === 'video' ? 540 : 420 }),
   image: (id, maxSize = 2048) => call('PhotoLink', 'image', { id, maxSize }),
-  play: (ids) => call('PhotoLink', 'play', { ids }),
+  play: (ids, { stream = false } = {}) => call('PhotoLink', 'play', { ids, stream }),
   cancelPlay: () => call('PhotoLink', 'cancelPlay'),
   /** A file path for playing a camera-roll video inside the app (Featured feed). */
   videoFile: (id) => call('PhotoLink', 'videoFile', { id }),
