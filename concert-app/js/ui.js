@@ -120,14 +120,20 @@ export function progressRing() {
     html: `<svg viewBox="0 0 52 52"><circle class="ring-track" cx="26" cy="26" r="${R}"/><circle class="ring-fill" cx="26" cy="26" r="${R}" stroke-dasharray="${LEN}" stroke-dashoffset="${LEN}"/></svg>`,
   });
   const fill = el.querySelector('.ring-fill');
+  const label = h('span.ring-pct', '0%');
+  el.append(label);
   let shown = 0;
+  const draw = () => {
+    fill.setAttribute('stroke-dashoffset', String(LEN * (1 - shown)));
+    label.textContent = `${Math.floor(shown * 100)}%`;
+  };
   return {
     el,
     set(p) {
       shown = Math.max(shown, Math.min(1, Math.max(0, p)));
-      fill.setAttribute('stroke-dashoffset', String(LEN * (1 - shown)));
+      draw();
     },
-    reset() { shown = 0; fill.setAttribute('stroke-dashoffset', String(LEN)); },
+    reset() { shown = 0; draw(); },
   };
 }
 

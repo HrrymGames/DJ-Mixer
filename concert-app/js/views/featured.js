@@ -15,6 +15,10 @@ let visible = false;
 let dirty = true;
 let built = false;   // the feed has been shown this session (keep its order from now on)
 let io;
+// Videos that have been loaded stay loaded until the app is closed: vid -> Promise<src>.
+const sources = new Map();
+const ready = new Set();          // vids whose source has finished loading
+const progress = new Map();       // Photos id -> how far its download has got (0…1)
 
 const keyOf = (concertId, vid) => `${concertId}|${vid}`;
 
@@ -77,8 +81,37 @@ export function refresh(change) {
 
 // iPhone app: fill the ring on a video that's downloading from iCloud.
 window.addEventListener('photolinkvideoprogress', (e) => {
+  progress.set(e.id, Math.max(progress.get(e.id) || 0, e.progress));
   for (const s of slides) if (s._target === e.id) s._ring.set(e.progress);
 });
+
+/** Where a video plays from. Asked for once; after that it's ready instantly until the app closes. */
+function sourceFor(vid) {
+  if (!sources.has(vid)) {
+    const p = (async () => {
+      if (isLinked(vid)) {
+        if (!isNative) throw new Error('This video lives in your camera roll – open the Setlistic iPhone app to watch it.');
+        // Downloads in full first if it's in iCloud, so it plays smoothly (the ring shows how far it's got).
+        const { path } = await photoLink.videoFile(linkTarget(vid));
+        return fileSrc(path);
+      }
+      const src = await mediaURL(vid);
+      if (!src) throw new Error('This video couldn\'t be found.');
+      return src;
+    })();
+    sources.set(vid, p);
+    p.then(() => ready.add(vid), () => sources.delete(vid)); // a failed one can be tried again later
+  }
+  return sources.get(vid);
+}
+
+/** When the app opens: pick this session's order and start loading the first two videos. */
+export async function preload() {
+  if (!built) { updateOrder(); built = true; dirty = true; }
+  for (const item of order.slice(0, 2)) {
+    try { await sourceFor(item.vid); } catch { /* shown when you get to it */ }
+  }
+}
 
 // Pause when the app goes to the background.
 document.addEventListener('visibilitychange', () => {
@@ -141,8 +174,6 @@ function slideEl(item, index) {
   video.addEventListener('loadedmetadata', () => {
     slide.classList.toggle('landscape', video.videoWidth > video.videoHeight);
   });
-  video.addEventListener('playing', () => slide.classList.remove('loading'));
-  video.addEventListener('waiting', () => slide.classList.add('loading'));
 
   const poster = h('img.feed-poster', { alt: '' });
   mediaURL(item.vid).then((u) => { if (isLinked(item.vid)) poster.src = u; });
@@ -156,11 +187,12 @@ function slideEl(item, index) {
   const note = h('p.feed-note', { hidden: true });
 
   const ring = progressRing();
-  const slide = h('section.feed-slide.loading', { 'data-index': index },
-    poster, video, h('div.feed-spinner'), ring.el, note, muteBtn, controls);
+  const slide = h('section.feed-slide', { 'data-index': index },
+    poster, video, ring.el, note, muteBtn, controls);
   slide._item = item;
   slide._ring = ring;
   slide._target = isLinked(item.vid) ? linkTarget(item.vid) : null;
+  if (slide._target) ring.set(progress.get(slide._target) || 0);
   slide._video = video;
 
   let hideTimer;
@@ -211,24 +243,15 @@ async function loadSlide(slide) {
   if (!slide || slide._loading || slide._video.src) return;
   slide._loading = true;
   const { vid } = slide._item;
+  // Only show the ring while it's actually downloading (not for ones that are already loaded).
+  if (slide._target && !ready.has(vid)) slide.classList.add('downloading');
   try {
-    let src;
-    if (isLinked(vid)) {
-      if (!isNative) throw new Error('This video lives in your camera roll – open the Setlistic iPhone app to watch it.');
-      // Downloads in full first if it's in iCloud, so it plays smoothly (the ring shows how far it's got).
-      slide._ring.reset();
-      slide.classList.add('downloading');
-      const { path } = await photoLink.videoFile(linkTarget(vid));
-      src = fileSrc(path);
-    } else {
-      src = await mediaURL(vid);
-    }
-    if (!src) throw new Error('This video couldn\'t be found.');
+    const src = await sourceFor(vid);
+    if (!slides.includes(slide)) return;
     slide._video.src = src;
     if (slides[activeIndex] === slide) startPlaying(slide);
   } catch (e) {
     slide._failed = true;
-    slide.classList.remove('loading');
     slide._note.textContent = e?.message || 'This video couldn\'t be loaded.';
     slide._note.hidden = false;
   } finally {
@@ -243,7 +266,6 @@ function unloadSlide(slide) {
   v.pause();
   v.removeAttribute('src');
   v.load();
-  slide.classList.add('loading');
 }
 
 function startPlaying(slide) {
@@ -267,7 +289,7 @@ function setActive(index) {
     s._video.pause();
     s._userPaused = false;
     s.classList.remove('show-controls');
-    if (i < index - 1 || i > index + 2) unloadSlide(s);
+    if (i < index - 3 || i > index + 3) unloadSlide(s);
   });
   playActive();
   loadNext();
@@ -281,9 +303,10 @@ async function loadNext() {
   loadingNext = true;
   try {
     for (;;) {
-      const slide = [activeIndex, activeIndex + 1, activeIndex + 2]
-        .map((i) => slides[i])
-        .find((s) => s && !s._video.src && !s._failed);
+      // Already-loaded videos nearby go straight back in; otherwise the one on screen, then the next two.
+      const near = [activeIndex, activeIndex + 1, activeIndex + 2, activeIndex - 1, activeIndex + 3, activeIndex - 2, activeIndex - 3];
+      const slide = near.map((i) => slides[i]).find((s) => s && !s._video.src && !s._failed
+        && (ready.has(s._item.vid) || near.indexOf(slides.indexOf(s)) <= 2));
       if (!slide) break;
       await loadSlide(slide);
     }

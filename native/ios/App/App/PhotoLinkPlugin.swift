@@ -371,7 +371,10 @@ extension PhotoLinkPlugin {
         return dir
     }()
 
-    private func newTempFile(ext: String) -> URL {
+    /// Temporary copies made this session, by Photos id (reused when the same video comes round again).
+    private static var tempFiles = [String: URL]()
+
+    private func newTempFile(for id: String, ext: String) -> URL {
         let dir = PhotoLinkPlugin.feedDir
         // Keep only the newest few temporary copies.
         if let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.creationDateKey]) {
@@ -380,9 +383,13 @@ extension PhotoLinkPlugin {
                 let b = (try? $1.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
                 return a > b
             }
-            for old in sorted.dropFirst(4) { try? FileManager.default.removeItem(at: old) }
+            for old in sorted.dropFirst(15) { try? FileManager.default.removeItem(at: old) }
         }
-        return dir.appendingPathComponent(UUID().uuidString).appendingPathExtension(ext.isEmpty ? "mov" : ext.lowercased())
+        let url = dir.appendingPathComponent(UUID().uuidString).appendingPathExtension(ext.isEmpty ? "mov" : ext.lowercased())
+        assetLock.lock()
+        PhotoLinkPlugin.tempFiles[id] = url
+        assetLock.unlock()
+        return url
     }
 
     @objc func videoFile(_ call: CAPPluginCall) {
@@ -395,19 +402,27 @@ extension PhotoLinkPlugin {
             call.reject("This video isn't in your camera roll any more", "MISSING")
             return
         }
+        // Already made a playable copy of this one earlier: use it again.
+        assetLock.lock()
+        let earlier = PhotoLinkPlugin.tempFiles[id]
+        assetLock.unlock()
+        if let existing = earlier, FileManager.default.fileExists(atPath: existing.path) {
+            call.resolve(["path": existing.path])
+            return
+        }
         downloadVideo(asset, progress: { value in self.reportVideoProgress(id, value) }) { avAsset, _ in
             // Normal videos: play Photos' own file directly – no copy.
             if let urlAsset = avAsset as? AVURLAsset {
                 let url = urlAsset.url
                 self.assetLock.lock()
                 self.openAssets[id] = urlAsset
-                if self.openAssets.count > 12 { self.openAssets.removeValue(forKey: self.openAssets.keys.first!) }
+                if self.openAssets.count > 40 { self.openAssets.removeValue(forKey: self.openAssets.keys.first!) }
                 self.assetLock.unlock()
                 if FileManager.default.isReadableFile(atPath: url.path) {
                     call.resolve(["path": url.path])
                     return
                 }
-                let dest = self.newTempFile(ext: url.pathExtension)
+                let dest = self.newTempFile(for: id, ext: url.pathExtension)
                 do {
                     try FileManager.default.copyItem(at: url, to: dest)
                     call.resolve(["path": dest.path])
@@ -422,7 +437,7 @@ extension PhotoLinkPlugin {
                 call.reject("Couldn't open this video")
                 return
             }
-            let dest = self.newTempFile(ext: "mp4")
+            let dest = self.newTempFile(for: id, ext: "mp4")
             export.outputURL = dest
             export.outputFileType = .mp4
             export.exportAsynchronously {

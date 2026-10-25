@@ -122,7 +122,11 @@ async function start() {
   }
 }
 
-start().then(backfill);
+start().then(() => {
+  // The first two Featured videos start loading as soon as the app opens.
+  featuredView.preload();
+  backfill();
+});
 // Back online after being offline: fill in anything that was added without signal.
 window.addEventListener('online', () => setTimeout(backfill, 1500));
 

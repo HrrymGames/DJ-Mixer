@@ -592,13 +592,6 @@ button.map-stats.has-missing { cursor: pointer; }
 .feed-poster { filter: blur(0); }
 .feed-video::-webkit-media-controls { display: none !important; }
 .feed-video::-webkit-media-controls-start-playback-button { display: none !important; -webkit-appearance: none; }
-.feed-spinner {
-  position: absolute; left: 50%; top: 50%; width: 38px; height: 38px; margin: -19px 0 0 -19px;
-  border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.25); border-top-color: #fff;
-  animation: feed-spin 0.9s linear infinite; opacity: 0; transition: opacity 0.2s; pointer-events: none;
-}
-.feed-slide.loading .feed-spinner { opacity: 1; }
-@keyframes feed-spin { to { transform: rotate(360deg); } }
 .feed-note { position: absolute; left: 24px; right: 24px; top: 45%; text-align: center; color: #fff; font-size: 15px; background: rgba(0, 0, 0, 0.55); padding: 12px 14px; border-radius: 12px; }
 .feed-mute { position: absolute; right: 16px; top: calc(var(--safe-top) + 16px); width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: rgba(0, 0, 0, 0.5); color: #fff; }
 .feed-mute svg { width: 22px; height: 22px; }
@@ -651,6 +644,7 @@ body.feed-mode .tab.active { color: #fff; }
 
 /* Download ring: a light ring that fills up over the video's first frame while it downloads */
 .progress-ring { width: 64px; height: 64px; filter: drop-shadow(0 1px 6px rgba(0, 0, 0, 0.45)); }
+.progress-ring .ring-pct { position: absolute; inset: 0; display: grid; place-items: center; color: rgba(245, 245, 247, 0.95); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .progress-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
 .progress-ring circle { fill: none; stroke-width: 4; }
 .progress-ring .ring-track { stroke: rgba(255, 255, 255, 0.28); }
@@ -658,7 +652,8 @@ body.feed-mode .tab.active { color: #fff; }
 
 .dl-screen { position: relative; width: 100%; height: 100%; background: #000; display: grid; place-items: center; }
 .dl-frame { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-.dl-screen .progress-ring { position: relative; opacity: 0; transition: opacity 0.25s; }
+.progress-ring { position: relative; }
+.dl-screen .progress-ring { opacity: 0; transition: opacity 0.25s; }
 .dl-screen.downloading .progress-ring { opacity: 1; }
 .dl-close { position: absolute; left: 16px; top: calc(var(--safe-top) + 12px); }
 .dl-anyway {
@@ -672,4 +667,3 @@ body.feed-mode .tab.active { color: #fff; }
 
 .feed-slide .progress-ring { position: absolute; left: 50%; top: 50%; margin: -32px 0 0 -32px; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
 .feed-slide.downloading .progress-ring { opacity: 1; }
-.feed-slide.downloading .feed-spinner { opacity: 0; }
