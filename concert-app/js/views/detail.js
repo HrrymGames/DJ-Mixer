@@ -188,6 +188,7 @@ async function addVideos(id) {
   if (!videoIds.length) return;
   const tagged = await tagVideos(videoIds);
   if (!tagged) { await deleteMedia(videoIds); return; }
+  if (!tagged.length) return;
 
   const c = getItem(id);
   const setlist = c.setlist.map((s) => ({ ...s, videoIds: [...s.videoIds] }));

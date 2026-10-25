@@ -1,5 +1,5 @@
 import { h, overlay, ICONS, confirmDialog } from '../ui.js';
-import { mediaURL, concerts } from '../store.js';
+import { mediaURL, concerts, deleteMedia } from '../store.js';
 import { isLinked } from '../native.js';
 import { playLinked } from '../linked.js';
 
@@ -9,8 +9,10 @@ import { playLinked } from '../linked.js';
  */
 export function tagVideos(videoIds) {
   return new Promise((resolve) => {
-    const titles = videoIds.map(() => '');
-    const guests = videoIds.map(() => '');
+    const ids = [...videoIds];
+    const removed = [];
+    const titles = ids.map(() => '');
+    const guests = ids.map(() => '');
     let index = 0;
     let result = null;
 
@@ -32,7 +34,7 @@ export function tagVideos(videoIds) {
     let playedIndex = -1;
     async function playCurrentLinked() {
       playedIndex = index;
-      await playLinked([videoIds[index]]);
+      await playLinked([ids[index]]);
       input.focus();
     }
 
@@ -64,6 +66,20 @@ export function tagVideos(videoIds) {
       guestBar.hidden = has;
     };
 
+    // Picked one by mistake? Take it out without having to title it first.
+    const removeBtn = h('button.tag-remove', {
+      type: 'button',
+      onclick: () => {
+        removed.push(...ids.splice(index, 1));
+        titles.splice(index, 1);
+        guests.splice(index, 1);
+        if (!ids.length) { result = []; dlg.close(); return; }
+        index = Math.min(index, ids.length - 1);
+        playedIndex = -1;
+        show();
+      },
+    }, h('span', { html: ICONS.trash }), 'Remove this video');
+
     const counter = h('span.tag-counter');
     const backBtn = h('button.nav-btn', { type: 'button' });
     const nextBtn = h('button.nav-btn.strong', { type: 'submit' });
@@ -73,14 +89,15 @@ export function tagVideos(videoIds) {
         e.preventDefault();
         titles[index] = input.value.trim();
         guests[index] = guestInput.value.trim();
-        if (index < videoIds.length - 1) { index++; show(); }
+        if (index < ids.length - 1) { index++; show(); }
         else {
-          result = videoIds.map((id, i) => ({ id, title: titles[i], guest: guests[i] }));
+          result = ids.map((id, i) => ({ id, title: titles[i], guest: guests[i] }));
           dlg.close();
         }
       },
     },
     h('div.tagger-bar', backBtn, counter, nextBtn),
+    removeBtn,
     h('div.tag-video-wrap', video, linkedPlay, soundBtn),
     h('label.field.song-field', h('span.field-label', 'Song name'), input, datalist),
     h('div.guest-field', guestBar, guestInput, guestList));
@@ -93,12 +110,12 @@ export function tagVideos(videoIds) {
     });
 
     async function show() {
-      counter.textContent = `${index + 1} of ${videoIds.length}`;
+      counter.textContent = `${index + 1} of ${ids.length}`;
       backBtn.textContent = index === 0 ? 'Cancel' : 'Back';
-      nextBtn.textContent = index === videoIds.length - 1 ? 'Done' : 'Next';
+      nextBtn.textContent = index === ids.length - 1 ? 'Done' : 'Next';
       input.value = titles[index];
       showGuest();
-      const id = videoIds[index];
+      const id = ids[index];
       if (isLinked(id)) {
         video.pause();
         video.hidden = true;
@@ -106,7 +123,7 @@ export function tagVideos(videoIds) {
         linkedPlay.hidden = false;
         thumb.src = await mediaURL(id);
         // Auto-play each new video once (a short pause lets the photo picker finish closing).
-        if (playedIndex !== index) setTimeout(() => { if (videoIds[index] === id && playedIndex !== index) playCurrentLinked(); }, 650);
+        if (playedIndex !== index) setTimeout(() => { if (ids[index] === id && playedIndex !== index) playCurrentLinked(); }, 650);
         return;
       }
       linkedPlay.hidden = true;
@@ -118,7 +135,12 @@ export function tagVideos(videoIds) {
     const dlg = overlay(form, {
       variant: 'center',
       dismissable: false,
-      onClose: () => { video.pause(); video.removeAttribute('src'); video.load(); resolve(result); },
+      onClose: () => {
+        video.pause(); video.removeAttribute('src'); video.load();
+        // Removed videos are thrown away (if everything is cancelled, the caller throws away the lot).
+        if (result && removed.length) deleteMedia(removed);
+        resolve(result);
+      },
     });
     show();
   });
