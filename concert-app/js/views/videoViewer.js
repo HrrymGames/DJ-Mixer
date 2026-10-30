@@ -3,7 +3,7 @@ import { getItem, saveItem, mediaURL, deleteMedia } from '../store.js';
 import { isLinked } from '../native.js';
 import { playLinked } from '../linked.js';
 import { autoplay } from './videoTagger.js';
-import { songLabelIn } from '../songs.js';
+import { songLabelIn, djFirst } from '../songs.js';
 
 /**
  * Tapping a song in the setlist. In the iPhone app, songs whose videos are linked from the
@@ -28,6 +28,7 @@ export async function songActions(concertId, songId) {
       many && song.videoIds.some(isLinked) && { label: 'Pick one of the videos', value: 'list' },
       { label: 'Rename song', value: 'rename' },
       { label: song.guest ? 'Change special guest' : 'Add special guest', value: 'guest' },
+      { label: song.dj ? 'Move to the artist\'s setlist' : 'Move to DJ Opener', value: 'dj' },
       { label: 'Remove from setlist', value: 'remove', destructive: true },
     ].filter(Boolean),
   });
@@ -35,6 +36,7 @@ export async function songActions(concertId, songId) {
   else if (choice === 'list') openSongVideos(concertId, songId);
   else if (choice === 'rename') await renameSong(concertId, songId);
   else if (choice === 'guest') await editGuest(concertId, songId);
+  else if (choice === 'dj') await toggleDj(concertId, songId);
   else if (choice === 'remove') await removeSong(concertId, songId);
 }
 
@@ -63,6 +65,19 @@ async function editGuest(concertId, songId) {
   const name = await promptDialog({ title: 'Special guest', value: s.guest || '', placeholder: 'e.g. Playboi Carti', confirm: 'Save' });
   if (name == null) return;
   await saveItem({ ...fresh, setlist: fresh.setlist.map((x) => (x.id === songId ? { ...x, guest: name.trim() } : x)) });
+}
+
+/** Moves a song between the DJ opener part (it goes to the bottom of it) and the artist's part (to the top). */
+async function toggleDj(concertId, songId) {
+  const fresh = getItem(concertId);
+  const s = fresh?.setlist.find((x) => x.id === songId);
+  if (!s) return;
+  const others = djFirst(fresh.setlist.filter((x) => x.id !== songId));
+  const moved = { ...s, dj: !s.dj };
+  const djPart = others.filter((x) => x.dj);
+  const mainPart = others.filter((x) => !x.dj);
+  // Either way it lands right where the two parts meet.
+  await saveItem({ ...fresh, setlist: [...djPart, moved, ...mainPart] });
 }
 
 async function removeSong(concertId, songId) {

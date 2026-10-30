@@ -5,7 +5,7 @@ import { playLinked } from '../linked.js';
 
 /**
  * After picking videos, show them one at a time so each can be given a song name.
- * Resolves with [{id, title, guest}] in the order picked, or null if cancelled.
+ * Resolves with [{id, title, guest, dj}] in the order picked, or null if cancelled.
  */
 export function tagVideos(videoIds) {
   return new Promise((resolve) => {
@@ -13,6 +13,7 @@ export function tagVideos(videoIds) {
     const removed = [];
     const titles = ids.map(() => '');
     const guests = ids.map(() => '');
+    const djs = ids.map(() => false);
     let index = 0;
     let result = null;
 
@@ -74,12 +75,21 @@ export function tagVideos(videoIds) {
         removed.push(...ids.splice(index, 1));
         titles.splice(index, 1);
         guests.splice(index, 1);
+        djs.splice(index, 1);
         if (!ids.length) { result = []; dlg.close(); return; }
         index = Math.min(index, ids.length - 1);
         playedIndex = -1;
         show();
       },
     }, h('span', { html: ICONS.trash }), 'Remove this video');
+
+    // "DJ Opener": the song was played by a DJ before the main artist came on.
+    const djBtn = h('button.dj-toggle', {
+      type: 'button',
+      'aria-pressed': 'false',
+      onclick: () => { djs[index] = !djs[index]; showDj(); },
+    }, h('span.dj-check', { html: ICONS.check }), 'DJ Opener');
+    const showDj = () => djBtn.setAttribute('aria-pressed', String(djs[index]));
 
     const counter = h('span.tag-counter');
     const backBtn = h('button.nav-btn', { type: 'button' });
@@ -92,7 +102,7 @@ export function tagVideos(videoIds) {
         guests[index] = guestInput.value.trim();
         if (index < ids.length - 1) { index++; show(); }
         else {
-          result = ids.map((id, i) => ({ id, title: titles[i], guest: guests[i] }));
+          result = ids.map((id, i) => ({ id, title: titles[i], guest: guests[i], dj: djs[i] }));
           dlg.close();
         }
       },
@@ -101,6 +111,7 @@ export function tagVideos(videoIds) {
     removeBtn,
     h('div.tag-video-wrap', video, linkedPlay, soundBtn),
     h('label.field.song-field', h('span.field-label', 'Song name'), input, datalist),
+    djBtn,
     h('div.guest-field', guestBar, guestInput, guestList));
 
     backBtn.addEventListener('click', async () => {
@@ -116,6 +127,7 @@ export function tagVideos(videoIds) {
       nextBtn.textContent = index === ids.length - 1 ? 'Done' : 'Next';
       input.value = titles[index];
       showGuest();
+      showDj();
       const id = ids[index];
       if (isLinked(id)) {
         video.pause();

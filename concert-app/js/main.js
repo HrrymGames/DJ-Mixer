@@ -4,11 +4,12 @@ import * as mapView from './views/map.js';
 import * as ticketsView from './views/tickets.js';
 import * as wishlistView from './views/wishlist.js';
 import * as featuredView from './views/featured.js';
+import * as wrappedView from './views/wrapped.js';
 import * as settingsView from './views/settings.js';
 import * as detailView from './views/detail.js';
 import { nav } from './nav.js';
 
-const TABS = { map: mapView, tickets: ticketsView, featured: featuredView, wishlist: wishlistView, settings: settingsView };
+const TABS = { map: mapView, tickets: ticketsView, featured: featuredView, wrapped: wrappedView, wishlist: wishlistView, settings: settingsView };
 const viewEl = (tab) => document.getElementById(`view-${tab}`);
 const detailEl = document.getElementById('view-detail');
 

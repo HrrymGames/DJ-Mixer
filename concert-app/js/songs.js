@@ -44,3 +44,8 @@ export function songLabelIn(setlist, songId) {
 export function concertGuests(concert) {
   return new Set((concert.setlist || []).map((s) => guestKey(s.guest)).filter(Boolean));
 }
+
+/** DJ opener songs always come first in a setlist, keeping their order within each part. */
+export function djFirst(setlist) {
+  return [...setlist.filter((s) => s.dj), ...setlist.filter((s) => !s.dj)];
+}

@@ -6,7 +6,7 @@ import { tagVideos } from './videoTagger.js';
 import { openSong, songActions } from './videoViewer.js';
 import { isNative } from '../native.js';
 import { pickLinked } from '../linked.js';
-import { guestNotes } from '../songs.js';
+import { guestNotes, djFirst } from '../songs.js';
 import { openPhotoViewer } from './photoViewer.js';
 import { makeSortable } from '../sortable.js';
 
@@ -70,14 +70,15 @@ function render() {
     icon(iconName),
     h('div', h('span.detail-label', label), h('span.detail-value', value), sub && h('span.detail-sub', sub)));
 
-  const setlistEl = h('ol.setlist');
+  const setlistEl = h('div.setlist-wrap');
   const photosEl = h('div.photo-grid');
 
   const body = h('div.detail-body', { style: { '--tc': c.color, '--tink': ink } },
     h('div.detail-rows',
       detailRow('pin', 'Venue', c.venue?.name || '—', placeLine(c.venue)),
       detailRow('calendar', 'Date', formatDate(c.date, true)),
-      detailRow('people', 'Capacity', c.capacity ? formatNumber(c.capacity) : 'Unknown')),
+      detailRow('people', 'Capacity', c.capacity ? formatNumber(c.capacity) : 'Unknown'),
+      c.spot && detailRow('ticket', 'Ticket', c.spot === 'seated' ? 'Seated' : 'Standing')),
 
     addBar('Add videos', () => addVideos(c.id)),
     setlistEl,
@@ -132,29 +133,45 @@ async function moreActions(c) {
 
 function renderSetlist(c) {
   const el = parts.setlistEl;
-  const notes = guestNotes(c.setlist);
-  el.replaceChildren(...c.setlist.map((song, i) => h('li.song', { 'data-id': song.id },
+  const setlist = djFirst(c.setlist);
+  const notes = guestNotes(setlist);
+  const dj = setlist.filter((s) => s.dj);
+  const main = setlist.filter((s) => !s.dj);
+
+  const songEl = (song, i) => h('li.song', { 'data-id': song.id },
     h('button.song-main', { type: 'button', onclick: (e) => { if (!e.currentTarget.longPressed) openSong(c.id, song.id); } },
       h('span.song-num', `${i + 1}.`),
       h('span.song-text',
-        h('span.song-title', song.title || 'Untitled', notes[i] && h('span.song-guest', ` (${notes[i]})`)),
+        h('span.song-title', song.title || 'Untitled', notes[setlist.indexOf(song)] && h('span.song-guest', ` (${notes[setlist.indexOf(song)]})`)),
         song.videoIds.length > 1 && h('span.song-meta', `${song.videoIds.length} videos`))),
-    h('button.drag-handle', { type: 'button', 'aria-label': `Move ${song.title || 'song'}`, html: ICONS.grip }))));
-  el.hidden = !c.setlist.length;
-  el.querySelectorAll('.song-main').forEach((btn) => onLongPress(btn, () => songActions(c.id, btn.closest('.song').dataset.id)));
+    h('button.drag-handle', { type: 'button', 'aria-label': `Move ${song.title || 'song'}`, html: ICONS.grip }));
 
-  makeSortable(el, {
-    handle: '.drag-handle',
-    onMove: (el2, idx) => { el2.querySelector('.song-num').textContent = `${idx + 1}.`; },
-    onEnd: async (from, to) => {
-      if (from === to) return;
-      const fresh = getItem(c.id);
-      const list = [...fresh.setlist];
-      const [moved] = list.splice(from, 1);
-      list.splice(to, 0, moved);
-      await saveItem({ ...fresh, setlist: list });
-    },
-  });
+  // Each part is numbered and reordered on its own; DJ opener songs always stay on top.
+  const part = (songs, isDj) => {
+    const list = h('ol.setlist', songs.map(songEl));
+    makeSortable(list, {
+      handle: '.drag-handle',
+      onMove: (el2, idx) => { el2.querySelector('.song-num').textContent = `${idx + 1}.`; },
+      onEnd: async (from, to) => {
+        if (from === to) return;
+        const fresh = djFirst(getItem(c.id).setlist);
+        const djPart = fresh.filter((s) => s.dj);
+        const mainPart = fresh.filter((s) => !s.dj);
+        const moving = isDj ? djPart : mainPart;
+        const [moved] = moving.splice(from, 1);
+        moving.splice(to, 0, moved);
+        await saveItem({ ...getItem(c.id), setlist: [...djPart, ...mainPart] });
+      },
+    });
+    return list;
+  };
+
+  el.replaceChildren(...(dj.length
+    ? [h('h3.setlist-heading', 'DJ Opener'), part(dj, true),
+      h('h3.setlist-heading.gap', c.artist || 'Setlist'), part(main, false)]
+    : [part(main, false)]));
+  el.hidden = !setlist.length;
+  el.querySelectorAll('.song-main').forEach((btn) => onLongPress(btn, () => songActions(c.id, btn.closest('.song').dataset.id)));
 }
 
 /** Hold a song for half a second to get its options (rename, remove…). */
@@ -192,7 +209,7 @@ async function addVideos(id) {
 
   const c = getItem(id);
   const setlist = c.setlist.map((s) => ({ ...s, videoIds: [...s.videoIds] }));
-  for (const { id: vid, title, guest = '' } of tagged) {
+  for (const { id: vid, title, guest = '', dj = false } of tagged) {
     const key = songKey(title);
     // Same song name again (e.g. two clips of the chorus) = one setlist entry with both videos.
     const existing = key && setlist.find((s) => songKey(s.title) === key);
@@ -200,10 +217,10 @@ async function addVideos(id) {
       existing.videoIds.push(vid);
       if (guest.trim() && !existing.guest) existing.guest = guest.trim();
     } else {
-      setlist.push({ id: uid(), title: title.trim(), guest: guest.trim(), videoIds: [vid] });
+      setlist.push({ id: uid(), title: title.trim(), guest: guest.trim(), dj, videoIds: [vid] });
     }
   }
-  await saveItem({ ...c, setlist });
+  await saveItem({ ...c, setlist: djFirst(setlist) });
   toast(`${tagged.length} video${tagged.length === 1 ? '' : 's'} added to the setlist`);
 }
 

@@ -158,6 +158,18 @@ export function openConcertForm({ mode = 'past', concert, prefill, onSaved } = {
     lookupTour();
   });
 
+  // ---------- seated / standing (tap the chosen one again to clear it) ----------
+  const spotButtons = ['seated', 'standing'].map((t) => h('button.seg', {
+    type: 'button',
+    'aria-pressed': String(draft.spot === t),
+    'data-spot': t,
+    onclick: () => {
+      draft.spot = draft.spot === t ? '' : t;
+      spotButtons.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.spot === draft.spot)));
+      renderPreview();
+    },
+  }, t === 'seated' ? 'Seated' : 'Standing'));
+
   // ---------- tour / festival ----------
   const typeButtons = ['tour', 'festival'].map((t) => h('button.seg', {
     type: 'button',
@@ -215,7 +227,7 @@ export function openConcertForm({ mode = 'past', concert, prefill, onSaved } = {
   const photoRow = h('div.photo-row');
   const photoStatus = h('p.hint');
   const renderPhotoRow = () => {
-    const hasOwn = pendingOwnImage || (draft.ownImageId && !removeOwnImage);
+    const hasOwn = !!(pendingOwnImage || (draft.ownImageId && !removeOwnImage));
     photoRow.replaceChildren(
       h('button.pill-btn', {
         type: 'button',
@@ -310,6 +322,8 @@ export function openConcertForm({ mode = 'past', concert, prefill, onSaved } = {
         h('label', tourLabel, tourInput),
         tourStatus),
       h('label.field', h('span.field-label', 'Venue capacity'), capacityInput, capacityStatus),
+      h('div.field', h('span.field-label', 'Seated or standing?'),
+        h('div.seg-group', { role: 'group', 'aria-label': 'Seated or standing' }, spotButtons)),
       h('div.field', h('span.field-label', 'Photo'), photoRow, photoStatus),
       editing && h('button.danger-btn', {
         type: 'button',

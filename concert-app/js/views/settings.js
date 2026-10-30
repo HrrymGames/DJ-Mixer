@@ -3,6 +3,7 @@ import { backupFlow, restoreFlow } from '../backup.js';
 import { checkServices } from '../lookup.js';
 import { isNative } from '../native.js';
 import { concertGuests } from '../songs.js';
+import { pickHome } from './wrapped.js';
 import { state, setSetting, concerts, isPast, deleteEverything } from '../store.js';
 
 let root;
@@ -95,6 +96,10 @@ function render() {
         row('Open the app on', segmented('startTab', [['tickets', 'Tickets'], ['map', 'Map'], ['featured', 'Featured'], ['wishlist', 'Wishlist']])),
         row('Order of past tickets', segmented('pastOrder', [['newest', 'Newest first'], ['oldest', 'Oldest first']])),
         toggle('showCountdown', 'Countdown on upcoming tickets', '"In 12 days" badge on the ticket')),
+      group('Stats',
+        h('button.set-row.tap', { type: 'button', onclick: pickHome },
+          h('span.set-text', h('span', 'Home town'), h('small', state.settings.home ? `${state.settings.home.name}${state.settings.home.area ? ', ' + state.settings.home.area : ''}` : 'Not set – used for miles travelled to gigs')),
+          h('span.set-chevron', '›'))),
       group('Map',
         row('Map style', segmented('mapStyle', [['detailed', 'Detailed'], ['simple', 'Simple']]), 'Simple shows just countries and works with no signal'),
         toggle('mapUpcoming', 'Show upcoming shows on the map', 'They appear with a dashed border')),

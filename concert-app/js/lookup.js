@@ -155,6 +155,25 @@ async function photonVenues(query) {
   }).filter((v) => v.lat != null && v.lon != null);
 }
 
+/** Towns and cities, for your home town (Photon / OpenStreetMap). */
+export async function searchPlaces(query) {
+  if (!query.trim()) return [];
+  try {
+    const res = await fetchJSON(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=6&lang=en&osm_tag=place`, { timeout: 7000 });
+    return (res.features || []).map((f) => {
+      const p = f.properties || {};
+      const [lon, lat] = f.geometry?.coordinates || [];
+      return {
+        name: p.name || query,
+        area: [p.county || p.state, countryName((p.countrycode || '').toUpperCase(), p.country || '')].filter(Boolean).join(', '),
+        lat, lon,
+      };
+    }).filter((p) => p.lat != null);
+  } catch {
+    return [];
+  }
+}
+
 async function wikidataVenues(query) {
   const ids = await wikidataSearch(query, 'P625');
   const ents = await wikidataEntities(ids);

@@ -11,6 +11,7 @@ const DEFAULT_SETTINGS = {
   mapUpcoming: true,        // show upcoming shows on the map
   mapStyle: 'detailed',     // 'detailed' (street tiles) | 'simple' (built-in countries only)
   autoLookup: true,         // fill tour / capacity / photo from the internet
+  home: null,               // {name, area, lat, lon}: your home town, for "miles travelled"
 };
 
 function loadSettings() {
@@ -139,10 +140,11 @@ export function newConcert(fields) {
     eventType: 'tour',    // 'tour' | 'festival'
     venue: { name: '', city: '', country: '', countryCode: '', lat: null, lon: null },
     capacity: null,
+    spot: '',             // 'seated' | 'standing' | '' (not set)
     date: todayISO(),
     color: randomTicketColor(),
     serial: Math.floor(1000 + Math.random() * 9000),
-    setlist: [],          // [{id, title, videoIds: []}]
+    setlist: [],          // [{id, title, guest, dj, videoIds: []}] (DJ opener songs first)
     photoIds: [],
     createdAt: Date.now(),
     ...fields,

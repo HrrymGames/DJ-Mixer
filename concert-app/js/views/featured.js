@@ -233,7 +233,7 @@ function fillCaption(el, item) {
   const label = song ? songLabel(song, guestNotes(c.setlist)[idx]) : '';
   el.replaceChildren(
     h('strong', label),
-    h('span', `${c.artist}${c.tour ? ' – ' + c.tour : ''}`),
+    h('span', `${song?.dj ? 'DJ Opener · ' : ''}${c.artist}${c.tour ? ' – ' + c.tour : ''}`),
     h('small', [c.venue?.name, formatDate(c.date)].filter(Boolean).join(' · ')));
 }
 

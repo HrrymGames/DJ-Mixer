@@ -29,6 +29,13 @@ export const filesystem = {
 
 export const share = (options) => call('Share', 'share', options);
 
+/** Downloads a file natively (no website permission rules), e.g. an artist photo to draw on a picture. */
+export async function nativeDownload(url) {
+  const res = await call('CapacitorHttp', 'request', { url, method: 'GET', responseType: 'blob', headers: {} });
+  if (res.status >= 400 || !res.data) throw new Error(`HTTP ${res.status}`);
+  return base64ToBlob(res.data, res.headers?.['Content-Type'] || res.headers?.['content-type'] || 'image/jpeg');
+}
+
 // ---- media ids for linked items: "ph:<random>:<Photos identifier>" ----
 export const LINK_PREFIX = 'ph:';
 export const isLinked = (mediaId) => typeof mediaId === 'string' && mediaId.startsWith(LINK_PREFIX);

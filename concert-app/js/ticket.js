@@ -107,10 +107,12 @@ export function ticketEl(item, { wish = item.kind === 'wish', onClick } = {}) {
     field('Date', wish ? '??/??/????' : formatDate(item.date)),
     field('Venue', wish ? unknown : item.venue?.name, wish ? unknown : placeLine(item.venue)),
     field('Capacity', wish ? unknown : (item.capacity ? formatNumber(item.capacity) : '—')),
-    h('div.t-seats',
-      h('span', h('b', 'BLK'), wish ? '??' : block),
-      h('span', h('b', 'ROW'), wish ? '??' : row),
-      h('span', h('b', 'SEAT'), wish ? '??' : seat))),
+    item.spot === 'standing' && !wish
+      ? h('div.t-seats', h('span', h('b', 'ENTRY'), 'STANDING'))
+      : h('div.t-seats',
+        h('span', h('b', 'BLK'), wish ? '??' : block),
+        h('span', h('b', 'ROW'), wish ? '??' : row),
+        h('span', h('b', 'SEAT'), wish ? '??' : seat))),
   photo,
   h('div.t-stub.t-right',
     barcode(item.id),
